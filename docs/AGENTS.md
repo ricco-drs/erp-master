@@ -10,7 +10,7 @@ Esto importa para las decisiones de código: se prioriza claridad, bajo costo y 
 
 ## Restricciones de negocio no negociables
 
-- **Cero modelos de IA de pago.** Embeddings con `sentence-transformers` (local, `all-MiniLM-L6-v2`, 384 dimensiones). LLM generativo con Groq API (gratis) como plan A y Ollama local como plan B. Nunca introducir dependencias de OpenAI, Anthropic API de pago, u otro proveedor con costo, salvo que el usuario lo pida explícitamente.
+- **Cero modelos de IA de pago.** Embeddings con `sentence-transformers` (local, `all-MiniLM-L6-v2`, 384 dimensiones). LLM generativo con Groq API (gratis) como plan A y Ollama local como plan B. Extracción de texto de documentos (OCR) con Gemini Vision (Google AI Studio, plan de estudiante), usado únicamente para esa etapa puntual del pipeline de ingesta — no como LLM conversacional. Nunca introducir dependencias de OpenAI, Anthropic API de pago, u otro proveedor con costo, salvo que el usuario lo pida explícitamente.
 - **El alcance del chatbot es ERP general**, no un software específico (SAP, Odoo, etc.) y no debe responder fuera de ese dominio: ante preguntas fuera de tema, debe rechazar y redirigir amablemente, nunca usar conocimiento general del LLM para responder.
 - **Sin autenticación por confirmación de correo.** El registro/login debe ser inmediato, sin paso de verificación de email, porque la demo se hace en vivo frente a jurado.
 - **El sistema debe poder correr 100% local sin internet** (plan B de contingencia: Supabase CLI local + Ollama). Ninguna URL, clave o endpoint debe quedar hardcodeada — todo vía variables de entorno (`.env`), de forma que cambiar entre plan A (nube) y plan B (local) sea solo cuestión de cambiar el `.env`.

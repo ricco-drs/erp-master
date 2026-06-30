@@ -42,6 +42,7 @@ Ver el documento de arquitectura del proyecto para el detalle de requerimientos 
 |---|---|
 | Frontend | Next.js (App Router) + TypeScript + Tailwind CSS |
 | Backend | Python 3.11+ con FastAPI |
+| Extracción de texto / OCR (PDF) | Gemini Vision (Google AI Studio, plan de estudiante) — con `pypdf` como fallback sin internet |
 | Embeddings | sentence-transformers (`all-MiniLM-L6-v2`, local, 384 dimensiones, gratuito) |
 | LLM generativo | Groq API (plan A, requiere internet) / Ollama local (plan B, sin internet) |
 | Base de datos | Supabase (PostgreSQL + pgvector) |
@@ -132,6 +133,9 @@ SUPABASE_SERVICE_ROLE_KEY=
 LLM_PROVIDER=groq          # groq | ollama
 GROQ_API_KEY=
 OLLAMA_BASE_URL=http://localhost:11434
+
+# Extracción de texto / OCR
+GEMINI_API_KEY=
 
 # Embeddings
 EMBEDDING_MODEL=all-MiniLM-L6-v2

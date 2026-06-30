@@ -8,14 +8,18 @@ Checklist pensado para ejecutarse en orden — cada bloque depende del anterior.
 
 ## 1. Extracción de texto
 
+- [ ] Crear cuenta/API key en Google AI Studio (aprovechando el plan PRO de estudiante) y agregar `GEMINI_API_KEY` a `app/core/config.py` y al `.env`.
 - [ ] Escribir `app/base_conocimiento/extraccion.py` con una función `extraer_texto(archivo, formato)` que reciba el archivo y su formato y devuelva texto plano.
-- [ ] Implementar extracción para PDF (usando `pypdf` o `pdfplumber`).
-- [ ] Implementar extracción para Word (usando `python-docx`).
-- [ ] Implementar lectura directa para `.txt` y `.md`.
-- [ ] Manejar errores de archivo corrupto o ilegible, devolviendo un error claro (no un crash silencioso) — conecta con RNF-10.
-- [ ] Probar con un archivo de cada formato (PDF, DOCX, TXT, MD) y confirmar que el texto extraído es legible y completo.
+- [ ] **PDF**: convertir cada página a imagen (usando `pdf2image` o `pymupdf`/`fitz` para rasterizar) y enviarla a Gemini Vision (modelo `gemini-2.0-flash` o el vigente con capacidad de visión) pidiendo la transcripción completa del contenido en texto/markdown. Esto resuelve PDFs escaneados, con tablas complejas o diseño multi-columna, que las librerías tradicionales (`pypdf`/`pdfplumber`) extraen mal.
+- [ ] Diseñar el prompt de extracción para que Gemini devuelva texto limpio y estructurado (markdown simple: títulos, listas, tablas en formato texto), no una descripción de la imagen.
+- [ ] Procesar documentos de varias páginas: enviar cada página por separado (o en batch si el modelo lo permite) y concatenar el resultado en orden.
+- [ ] **Word (.docx)**: mantener `python-docx` para extracción directa de texto (no requiere visión, ya viene como texto estructurado nativo).
+- [ ] **Texto plano / Markdown (.txt, .md)**: lectura directa, sin pasar por ningún modelo.
+- [ ] Manejar errores de archivo corrupto, fallo de la API de Gemini (timeout, rate limit), devolviendo un error claro (no un crash silencioso) — conecta con RNF-10.
+- [ ] Considerar un fallback: si Gemini Vision falla o no está disponible (sin internet, cuota agotada), usar `pypdf` como respaldo básico para no bloquear completamente la funcionalidad — relevante para el plan B de contingencia sin internet.
+- [ ] Probar con un archivo de cada formato (PDF escaneado, PDF con texto nativo, DOCX, TXT, MD) y confirmar que el texto extraído es legible y completo.
 
-**Verificación de bloque:** los 4 formatos extraen texto correctamente; un archivo corrupto devuelve un error manejado, no una excepción sin capturar.
+**Verificación de bloque:** los 4 formatos extraen texto correctamente, incluyendo un PDF escaneado o con formato complejo que antes habría fallado con extracción tradicional; un archivo corrupto o un fallo de Gemini devuelve un error manejado, no una excepción sin capturar.
 
 ---
 
