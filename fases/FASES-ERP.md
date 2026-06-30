@@ -37,7 +37,7 @@ Plan de trabajo del proyecto, de principio a fin, pensado para llegar listos a l
 
 ---
 
-## Fase 2 — Backend base y autenticación
+## Fase 2 — Backend base y autenticación (completada)
 
 **Objetivo:** tener una API funcional con autenticación end-to-end, sin RAG ni evaluaciones todavía.
 
