@@ -188,6 +188,137 @@ def corregir_automatica(pregunta: dict, respuesta_dada: str | None) -> float:
 
 
 # ---------------------------------------------------------------------------
+# Calificación con feedback vía LLM (preguntas abiertas)
+# ---------------------------------------------------------------------------
+
+_PROMPT_CALIFICAR_SISTEMA = """\
+Eres un docente evaluador experto en sistemas ERP. Tu tarea es calificar la respuesta
+de un estudiante a una pregunta abierta, comparándola contra el contexto del material
+de estudio provisto.
+
+Responde EXCLUSIVAMENTE con un objeto JSON válido, sin texto adicional, sin markdown.
+"""
+
+_PROMPT_CALIFICAR_USUARIO = """\
+Califica la siguiente respuesta de un estudiante.
+
+Pregunta:
+{enunciado}
+
+Contexto del material de estudio (fuente de verdad):
+---
+{contexto}
+---
+
+Respuesta del estudiante:
+\"\"\"{respuesta_dada}\"\"\"
+
+Instrucciones de calificación:
+- Asigna un puntaje entre 0.0 y 1.0 (donde 1.0 = respuesta completa y correcta).
+  - 0.0: respuesta incorrecta, en blanco, o completamente irrelevante.
+  - 0.3–0.5: respuesta parcial con errores importantes o conceptos incompletos.
+  - 0.6–0.8: respuesta mayormente correcta pero con omisiones o imprecisiones menores.
+  - 0.9–1.0: respuesta completa, precisa y bien fundamentada en el material.
+- Escribe un feedback específico (2-4 oraciones) que:
+  - Señale exactamente qué acertó el estudiante y qué le faltó o tuvo incorrecto.
+  - Sea constructivo y útil para que el estudiante entienda su error.
+  - No sea genérico (evitar "buena respuesta" o "incorrecto" sin explicación).
+  - Se base únicamente en el contexto provisto, no en conocimiento externo.
+- Responde siempre en español.
+
+Devuelve SOLO este JSON (sin texto antes ni después):
+{{"puntaje": <número entre 0.0 y 1.0>, "feedback": "<texto del feedback>"}}
+"""
+
+
+@dataclass
+class ResultadoAbierta:
+    puntaje: float       # 0.0 – 1.0
+    feedback: str
+
+
+def calificar_abierta(
+    pregunta: dict,
+    respuesta_dada: str | None,
+    contexto_tema: str,
+) -> ResultadoAbierta:
+    """
+    Califica una pregunta abierta usando el LLM.
+
+    Evalúa la respuesta del estudiante contra el contexto real del tema.
+    Devuelve puntaje (0.0–1.0) y feedback específico y constructivo.
+
+    Si la respuesta está vacía/None → puntaje 0.0 sin llamar al LLM.
+    Si el LLM devuelve JSON malformado → reintento; si persiste → 0.0 con feedback genérico.
+    Lanza LLMError si el proveedor falla (se propaga al router → HTTP 503).
+    """
+    if pregunta.get("tipo") != "abierta":
+        raise ValueError(
+            f"calificar_abierta solo aplica a preguntas abiertas, no a '{pregunta.get('tipo')}'."
+        )
+
+    # Respuesta vacía → puntaje 0 sin LLM
+    if not respuesta_dada or not respuesta_dada.strip():
+        return ResultadoAbierta(
+            puntaje=0.0,
+            feedback="No se proporcionó una respuesta. Intentá responder con tus propias palabras basándote en el material del tema.",
+        )
+
+    messages = [
+        {"role": "system", "content": _PROMPT_CALIFICAR_SISTEMA},
+        {
+            "role": "user",
+            "content": _PROMPT_CALIFICAR_USUARIO.format(
+                enunciado=pregunta["enunciado"],
+                contexto=contexto_tema,
+                respuesta_dada=respuesta_dada.strip(),
+            ),
+        },
+    ]
+
+    ultimo_error: Exception | None = None
+    for intento in range(1, 3):
+        try:
+            texto_llm = completar(messages, temperature=0.2, max_tokens=400)
+
+            # Limpiar posible markdown
+            texto = texto_llm.strip()
+            if texto.startswith("```"):
+                texto = "\n".join(
+                    l for l in texto.splitlines() if not l.strip().startswith("```")
+                ).strip()
+
+            data = json.loads(texto)
+            puntaje = float(data["puntaje"])
+            feedback = str(data["feedback"]).strip()
+
+            # Clamp al rango válido
+            puntaje = max(0.0, min(1.0, puntaje))
+
+            if not feedback:
+                raise ValueError("feedback vacío en la respuesta del LLM")
+
+            logger.info(
+                "[EVAL] Calificación abierta intento=%d puntaje=%.2f",
+                intento, puntaje,
+            )
+            return ResultadoAbierta(puntaje=puntaje, feedback=feedback)
+
+        except LLMError:
+            raise  # propagar — el router lo convierte en 503
+        except (json.JSONDecodeError, KeyError, ValueError, TypeError) as e:
+            ultimo_error = e
+            logger.warning("[EVAL] JSON calificación malformado intento %d: %s", intento, e)
+
+    # Ambos intentos fallaron
+    logger.error("[EVAL] No se pudo parsear calificación tras 2 intentos: %s", ultimo_error)
+    return ResultadoAbierta(
+        puntaje=0.0,
+        feedback="No fue posible calificar esta respuesta automáticamente. Un docente la revisará.",
+    )
+
+
+# ---------------------------------------------------------------------------
 # Función principal pública
 # ---------------------------------------------------------------------------
 

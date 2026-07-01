@@ -124,3 +124,44 @@ Normalización tolerante para comparación:
 | VF correcta (exacta, minúsculas, espacios) | 4 | ✅ 1.0 |
 | VF incorrecta (opuesta, vacía, None) | 3 | ✅ 0.0 |
 | Tipo "abierta" → ValueError | 1 | ✅ |
+
+---
+
+## Bloque 3 — Calificación con feedback vía LLM (preguntas abiertas)
+
+### Archivo modificado
+
+**`backend/app/evaluaciones/service.py`** — agregadas función y dataclass:
+
+**`@dataclass ResultadoAbierta(puntaje: float, feedback: str)`**
+
+**`calificar_abierta(pregunta, respuesta_dada, contexto_tema) -> ResultadoAbierta`**
+
+Flujo:
+1. Guarda de tipo: `ValueError` si `tipo != "abierta"`.
+2. Respuesta vacía/None → `puntaje=0.0` con mensaje estándar, **sin llamar al LLM**.
+3. Construye prompt con el enunciado, el contexto del tema (chunks reales) y la respuesta del estudiante.
+4. Llama a `completar(temperature=0.2, max_tokens=400)`.
+5. Parsea JSON `{"puntaje": float, "feedback": str}` — clamp al rango `[0.0, 1.0]`.
+6. Limpia markdown si el LLM lo incluyó (mismo patrón que en Bloque 1).
+7. Hasta 2 reintentos ante JSON malformado; si ambos fallan → `puntaje=0.0` con feedback genérico de error (no crashea la sesión).
+8. `LLMError` se propaga directo al caller (el router la convertirá en HTTP 503).
+
+**Prompt de calificación** (`_PROMPT_CALIFICAR_USUARIO`):
+- Provee escala explícita: 0.0 / 0.3–0.5 / 0.6–0.8 / 0.9–1.0 con criterios concretos.
+- Instruye feedback específico (2-4 oraciones): qué acertó, qué faltó, constructivo.
+- Prohíbe explícitamente feedback genérico ("buena respuesta", "incorrecto").
+- Respuesta siempre en español; juzgar solo contra el contexto provisto.
+
+### Verificación — 5 casos con contexto real del tema
+
+| Caso | Puntaje | Feedback |
+|---|---|---|
+| Respuesta completa y bien fundamentada | **0.70** | Señala aciertos y menciona omisión de evidencia empírica del material |
+| Respuesta parcial con omisiones | **0.40** | Señala qué mencionó bien y qué conceptos claves omitió del contexto |
+| Respuesta incorrecta / irrelevante | **0.00** | Explica por qué no abordó la relación solicitada |
+| Respuesta None (sin responder) | **0.00** sin LLM | Mensaje estándar de respuesta no provista |
+| Respuesta vacía `"   "` | **0.00** sin LLM | Mismo mensaje estándar |
+| Tipo incorrecto → `ValueError` | — | ✅ |
+
+Gradiente de puntaje coherente con la calidad de las respuestas. Feedback específico en todos los casos evaluados por el LLM.
