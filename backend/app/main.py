@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.auth import get_current_user_id
 from app.core.supabase_client import supabase
+from app.base_conocimiento.router import router as documentos_router
 
 app = FastAPI(title="ChatERP API")
 
@@ -13,6 +14,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+app.include_router(documentos_router)
 
 
 @app.get("/health")

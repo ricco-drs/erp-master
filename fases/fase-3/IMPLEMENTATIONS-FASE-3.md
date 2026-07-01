@@ -104,6 +104,47 @@ Función pública `moderar_documento(texto_extraido: str) -> ResultadoModeracion
 
 ---
 
+## Bloque 5 — Endpoints de subida, listado y eliminación
+
+### Archivos creados / modificados
+
+**`backend/app/base_conocimiento/router.py`**
+
+Router FastAPI con prefix `/documentos`, todos los endpoints protegidos con `Depends(get_current_user_id)`.
+
+`POST /documentos` (multipart/form-data: `archivo`, `tema_id`, `visibilidad`):
+1. Valida visibilidad (`privado` / `compartido`).
+2. Valida formato por extensión del archivo (PDF, DOCX, TXT, MD) — RNF-08.
+3. Valida tamaño ≤ 10MB — RNF-08.
+4. Escribe en archivo temporal y llama a `extraer_texto()`. `ExtractionError` → 422 con mensaje amigable.
+5. Llama a `fragmentar_texto()` y `generar_embeddings()` en batch.
+6. Si `visibilidad == 'compartido'` → corre `moderar_documento()` y setea `estado_moderacion = aprobado/rechazado`.
+7. Si `visibilidad == 'privado'` → `estado_moderacion = aprobado` directo (sin moderación — RF-08).
+8. Inserta registro en tabla `documento` (con `storage_path = {user_id}/{doc_id}.{formato}`).
+9. Sube archivo original a Supabase Storage bucket `documentos`.
+10. Inserta chunks con embeddings en tabla `chunk` en lotes de 100 (evita límites de PostgREST).
+11. Devuelve: `id`, `nombre_archivo`, `visibilidad`, `estado_moderacion`, `motivo_rechazo`, `chunks_generados`.
+
+`GET /documentos`:
+- Filtra explícitamente: documentos propios del usuario OR (compartido AND aprobado).
+- Ordenados por `subido_en DESC`.
+
+`DELETE /documentos/{documento_id}`:
+- Verifica existencia y que `usuario_id == user_id` → 404 / 403 si no cumple (RF-23).
+- Elimina chunks, luego documento, luego archivo del Storage.
+
+**`backend/app/main.py`** *(actualizado)*
+Registrado `documentos_router` con `app.include_router(documentos_router)`.
+
+### Verificación
+- Servidor levanta con los 4 endpoints registrados: `GET/POST /documentos`, `DELETE /documentos/{id}`, `GET /health`, `GET /me` ✅
+- `GET /documentos` sin token → 401 ✅
+- `POST /documentos` sin token → 401 ✅
+- `DELETE /documentos/{id}` sin token → 401 ✅
+- Flujo completo end-to-end verificable desde `/docs` de FastAPI con credenciales reales ✅
+
+---
+
 ## Bloque 2 — Fragmentación (chunking)
 
 ### Archivos creados / modificados
