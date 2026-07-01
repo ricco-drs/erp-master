@@ -197,3 +197,73 @@ Auditados todos los componentes de datos:
 | `dashboard` | Stats con `—` mientras cargan ✅ |
 
 Ningún componente muestra datos vacíos sin indicación de estado. ✅
+
+---
+
+## Bloque 4 — Disponibilidad y resiliencia (RNF-12, RNF-13, RNF-14)
+
+### RNF-12 — Groq caído: reintentos y mensaje claro al usuario
+
+**Flujo ya implementado desde Fase 4 (sin cambios en este bloque):**
+
+```
+LLMError (timeout)
+  └─ llm_provider.py: MAX_REINTENTOS = 2, backoff exponencial (2s, 4s)
+       └─ tras 3 intentos fallidos → LLMError con mensaje claro
+            └─ chat/router.py: except LLMError → HTTP 503 con detail
+                 └─ apiFetch: throws Error(detail)
+                      └─ chat/[sesionId]/page.tsx: catch → setErrorEnvio(msg) → inline en UI
+```
+
+- Rate-limit 429 → no reintenta (cuota agotada, no un fallo transitorio).
+- Auth 401 → no reintenta (clave inválida, no transitorio).
+- Timeout → reintenta hasta `MAX_REINTENTOS`. ✅
+
+### RNF-13 — Supabase caído: respuesta degradada sin crash
+
+**Retriever (`chat/retriever.py`) — ya implementado:**
+
+```python
+try:
+    resp = supabase.rpc("match_chunks", ...).execute()
+except Exception as e:
+    logger.error("Error en búsqueda vectorial: %s", e)
+    return []  # → service.py interpreta como fuera_de_alcance=True
+```
+
+Si Supabase cae durante una consulta vectorial, el chat responde con el mensaje de "sin contexto" en lugar de crashear. ✅
+
+**Global exception handler — `backend/app/main.py`** — añadido:
+
+```python
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+    logger.error("Error no manejado en %s %s: %r", request.method, request.url.path, exc)
+    return JSONResponse(
+        status_code=503,
+        content={"detail": "El servicio no está disponible en este momento. Intentá de nuevo en unos segundos."},
+    )
+```
+
+Cualquier excepción no capturada (p.ej. llamada a Supabase en endpoints de perfil, documentos, evaluaciones) devuelve HTTP 503 con mensaje legible en lugar de HTTP 500 con stack trace. El frontend ya convierte el `detail` en mensaje de error inline. ✅
+
+### RNF-14 — Reinicio del backend: recuperación sin estado remanente
+
+**Verificaciones sin cambios de código:**
+
+| Componente | Comportamiento ante restart |
+|---|---|
+| `supabase` client | Singleton de módulo — se recrea limpio en cada inicio del proceso. ✅ |
+| Modelo `all-MiniLM-L6-v2` | `_model = None` al inicio; se carga en la primera request (`_get_model()`). ✅ |
+| Cache LRU de embeddings | Se vacía al reiniciar (caché en memoria RAM del proceso). Correcto — no hay estado incoherente. ✅ |
+| JWT auth | Sin sesión en servidor — token validado en cada request. ✅ |
+| Historial de chat | Persistido en Supabase — el frontend recarga con `GET /sesiones/{id}/mensajes`. ✅ |
+
+El backend es stateless: cualquier instancia nueva puede atender cualquier request. ✅
+
+### Escenario: frontend con backend inaccesible (backend caído / reiniciando)
+
+`fetch()` lanza `TypeError: Failed to fetch` (error de red).
+- `apiFetch` propaga el error tal cual.
+- Todos los `catch` en las páginas capturan el error y muestran mensaje inline.
+- El usuario ve "No se pudo cargar..." y puede reintentar manualmente. ✅

@@ -1,5 +1,8 @@
-from fastapi import Depends, FastAPI
+import logging
+
+from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from app.core.auth import get_current_user_id
 from app.core.supabase_client import supabase
@@ -9,7 +12,18 @@ from app.chat.router import router as chat_router
 from app.evaluaciones.router import router as evaluaciones_router
 from app.perfil.router import router as perfil_router
 
+logger = logging.getLogger(__name__)
+
 app = FastAPI(title="ChatERP API")
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+    logger.error("Error no manejado en %s %s: %r", request.method, request.url.path, exc)
+    return JSONResponse(
+        status_code=503,
+        content={"detail": "El servicio no está disponible en este momento. Intentá de nuevo en unos segundos."},
+    )
 
 app.add_middleware(
     CORSMiddleware,
