@@ -298,3 +298,54 @@ Todas las variables usadas están definidas en `frontend/app/globals.css`:
 - `--accent-muted: #1A2E22` ✅
 - `--border-strong: #3A3A3A` ✅
 - `--bg-surface-hover: #1A1A1A` ✅
+
+---
+
+## Bloque 7 — Cierre de fase
+
+### Verificaciones realizadas
+
+**`respuesta_correcta` no expuesta al cliente**
+
+- `PreguntaOut` (router.py:62–66) contiene solo `id`, `tipo`, `enunciado`, `opciones` — sin `respuesta_correcta`.
+- En `POST /generar`, las preguntas se mapean manualmente a `PreguntaOut` (línea 145–153), nunca por `model_validate` sobre el dict completo.
+- La consulta a la tabla `pregunta` desde el GET de intento tampoco devuelve la columna al cliente: la respuesta usa `RespuestaCalificadaOut` que carece del campo.
+- Verificación: ✅
+
+**Políticas RLS — `intento_evaluacion` y `respuesta_usuario`**
+
+Revisadas en `sql/01_schema_chatbot_erp.sql` (líneas 225–235):
+
+- `intento_evaluacion_propio`: `FOR ALL USING (usuario_id = auth.uid())` — el usuario solo puede leer/escribir sus propios intentos.
+- `respuesta_usuario_segun_intento_propio`: `FOR ALL USING (EXISTS (SELECT 1 FROM intento_evaluacion i WHERE i.id = ... AND i.usuario_id = auth.uid()))` — acceso indirecto a través del intento del dueño.
+- Aislamiento cruzado verificado en Bloque 5 (paso 7): otro usuario consulta historial → vacío; consulta intento ajeno directamente → 404 (el backend hace `.eq("id", intento_id).eq("usuario_id", user_id).single()` antes de procesar).
+- `evaluacion` y `pregunta`: lectura abierta a autenticados (son plantillas compartidas, no datos privados).
+- Verificación: ✅
+
+**Archivo de referencia creado**: `sql/04_rls_evaluaciones_verificacion.sql` — DROP + CREATE de las 4 políticas con query de auditoría al final.
+
+**Tiempo de generación (RNF-02 ≤ 15s)**
+
+Medido en Bloque 1 y Bloque 5:
+- 8 preguntas sobre tema real: ~4s (tokens=3469) — Bloque 1
+- 6 preguntas: ~7.2s — Bloque 5
+- Ambos muy por debajo del límite de 15s.
+- La UI muestra spinner con aviso explícito "puede tardar hasta 15 segundos".
+- Verificación: ✅
+
+**Calidad del feedback de preguntas abiertas**
+
+- Prompt `_PROMPT_CALIFICAR_USUARIO` prohíbe feedback genérico ("buena respuesta", "incorrecto").
+- Instruye 2–4 oraciones específicas: qué acertó, qué faltó, constructivo.
+- Verificado en Bloque 3: 3 casos con feedback específico y diferenciado según calidad de respuesta.
+- Verificación: ✅
+
+### Condición de salida cumplida
+
+Un usuario puede:
+1. Seleccionar un tema desde `/evaluaciones` → generar evaluación → examen con 3 tipos de pregunta en `/evaluaciones/[intentoId]`
+2. Enviar respuestas → calificación automática + LLM → puntaje 0–20 en `/evaluaciones/[intentoId]/resultados`
+3. Ver feedback específico por pregunta abierta
+4. Consultar el intento en `/evaluaciones/historial` (implementado en Fase 6)
+
+Fase 5 completada ✅
