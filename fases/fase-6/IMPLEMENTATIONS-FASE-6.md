@@ -93,3 +93,38 @@ Componente compartido: borde dashed + icono 50% opacidad + texto en `--text-mute
 ### Verificación
 
 TypeScript: `npx tsc --noEmit` sin errores en el archivo ✅
+
+---
+
+## Bloque 3 — Navegación global (sidebar)
+
+### Archivo modificado
+
+**`frontend/components/sidebar.tsx`**
+
+#### Cambios aplicados
+
+**Reestructura del nav:**
+- `NAV_MAIN`: Inicio (`/dashboard`), Chat, Evaluaciones, Documentos — orden lógico de uso.
+- `NAV_CUENTA`: solo Perfil (Dashboard movido a principal, sección "Cuenta" queda limpia con un solo item).
+
+**Borde izquierdo en item activo:**
+- `NavItem` ahora tiene `borderLeft: active ? "2px solid var(--accent)" : "2px solid transparent"` — el ítem activo muestra la línea verde característica del design system.
+- `padding` ajustado a `7px 8px 7px 6px` para compensar el borde sin desplazar el texto.
+- Transición suave: `transition: "background-color 0.1s, color 0.1s, border-color 0.1s"`.
+
+**Nombre del usuario en footer:**
+- Muestra `user?.user_metadata?.nombre` (establecido en el registro) con fallback a `user?.email`.
+- Debajo, el correo en texto pequeño (`--text-muted`, 11px).
+- El nombre va en `--text-secondary` 13px peso 500 — más prominente que el correo.
+
+#### Lo que ya estaba correcto (sin cambios)
+
+- `active` calculado con `pathname === href || pathname.startsWith(href + "/")` — activa correctamente en subrutas.
+- `Sidebar` presente en todas las rutas protegidas vía `(protected)/layout.tsx`.
+- `LogOut` visible siempre en el footer.
+- Brand "ChatERP" con barra verde en el header del sidebar.
+
+### Verificación
+
+TypeScript: `npx tsc --noEmit` sin errores ✅

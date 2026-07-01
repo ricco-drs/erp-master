@@ -6,13 +6,13 @@ import { getSupabase } from "@/lib/supabase/client";
 import { useSession } from "@/lib/supabase/session-context";
 
 const NAV_MAIN = [
+  { href: "/dashboard", label: "Inicio", icon: LayoutDashboard },
   { href: "/chat", label: "Chat", icon: MessageSquare },
-  { href: "/documentos", label: "Documentos", icon: FileText },
   { href: "/evaluaciones", label: "Evaluaciones", icon: ClipboardList },
+  { href: "/documentos", label: "Documentos", icon: FileText },
 ];
 
 const NAV_CUENTA = [
-  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/perfil", label: "Perfil", icon: User },
 ];
 
@@ -117,9 +117,22 @@ export function Sidebar() {
       <div style={{ borderTop: "1px solid var(--border)", padding: "12px 16px" }}>
         <p
           style={{
-            fontSize: "12px",
+            fontSize: "13px",
+            fontWeight: 500,
+            color: "var(--text-secondary)",
+            marginBottom: "2px",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {(user?.user_metadata?.nombre as string | undefined) ?? user?.email}
+        </p>
+        <p
+          style={{
+            fontSize: "11px",
             color: "var(--text-muted)",
-            marginBottom: "8px",
+            marginBottom: "10px",
             overflow: "hidden",
             textOverflow: "ellipsis",
             whiteSpace: "nowrap",
@@ -169,16 +182,17 @@ function NavItem({
         alignItems: "center",
         gap: "8px",
         width: "100%",
-        padding: "7px 8px",
+        padding: "7px 8px 7px 6px",
         borderRadius: "var(--radius-sm)",
         border: "none",
+        borderLeft: active ? "2px solid var(--accent)" : "2px solid transparent",
         cursor: "pointer",
         fontSize: "14px",
         fontWeight: active ? 500 : 400,
         color: active ? "var(--text-primary)" : "var(--text-secondary)",
         backgroundColor: active ? "var(--bg-surface-hover)" : "transparent",
         textAlign: "left",
-        transition: "background-color 0.1s, color 0.1s",
+        transition: "background-color 0.1s, color 0.1s, border-color 0.1s",
       }}
       onMouseEnter={(e) => {
         if (!active) {
