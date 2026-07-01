@@ -177,3 +177,62 @@ Clase `Chunk` implementada con `@dataclass`.
   - Chunk más largo: 3478 chars (sin anomalías de 38k de tablas/índices gracias al fallback) ✅
   - Orden secuencial sin saltos (1 → 2186) ✅
   - Overlap presente entre chunk 1 y chunk 2 ✅
+
+---
+
+## Bloque 6 — Seed de base de conocimiento predefinida
+
+### Objetivo
+Poblar la base de conocimiento con contenido ERP real y predefinido para que el chatbot tenga contexto desde el primer uso, sin depender de documentos subidos por usuarios.
+
+### Fuente de contenido
+**PDF**: `Grupo 3 Avance 4.pdf` — tesis de investigación UNI (81 páginas)
+- Título: "Influencia de la Gestión del Cambio y la Ética Profesional en el Desempeño Operativo y la Confiabilidad de la Información en la Implementación de Sistemas ERP en Organizaciones"
+- Institución: Universidad Nacional de Ingeniería, FIIS
+
+### Archivos creados
+
+**`backend/scripts/seed_temas.py`**
+
+Script idempotente que realiza cuatro pasos en secuencia:
+
+1. **Usuario sistema**: Busca o crea `sistema@chaterp.local` en Supabase Auth usando `auth.admin.create_user`. El trigger `handle_new_user` inserta la fila en `public.usuario` automáticamente; si no dispara (entorno de test), el script lo hace manualmente. Idempotente: no crea duplicados si ya existe.
+
+2. **Temas predefinidos**: Inserta 5 temas con `es_predefinido=true` si no existen:
+   - `Fundamentos de Sistemas ERP`
+   - `Gestión del Cambio Organizacional`
+   - `Implementación de ERP`
+   - `Ética Profesional en TI`
+   - `Capacitación y Desempeño Operativo`
+
+3. **Procesamiento del PDF**: Corre el pipeline completo sobre `Grupo 3 Avance 4.pdf`:
+   - Extracción: `extraer_texto()` con Gemini Vision (fallback a pypdf por página ante rate limits 429)
+   - Chunking: `fragmentar_texto()`
+   - Embeddings: `generar_embeddings()` en batch
+   - Inserta el documento en `documento` con `visibilidad='compartido'`, `estado_moderacion='aprobado'` (predefinido, no requiere moderación)
+   - Sube el PDF original al bucket `documentos`
+   - Inserta los chunks con embeddings en lotes de 100
+
+4. **Verificación**: Intenta `match_chunks` RPC (Fase 4) y cae gracefully; verifica conteo de chunks en BD.
+
+Idempotente: si el PDF ya fue procesado (`nombre_archivo + usuario_id` ya existe), omite el paso sin duplicar.
+
+### Ejecución
+```
+cd backend
+venv/Scripts/python scripts/seed_temas.py
+```
+
+### Resultado
+- Extracción: 155,035 chars del PDF en 101s (Gemini procesó ~44 páginas antes del rate limit 429; pypdf usó como fallback por página para el resto — texto completo obtenido)
+- Chunking: 119 chunks generados
+- Embeddings: generados en 6.9s
+- Todo insertado correctamente en Supabase
+- 5 temas predefinidos en tabla `tema`
+- Documento `d0e8960c...` insertado en tabla `documento`
+- 119 chunks en tabla `chunk` con vectores `vector(384)`
+
+### Nota sobre el rate limit de Gemini
+La free tier de `gemini-2.5-flash` tiene un límite de 5 RPM. Para PDFs de 81 páginas esto implica que Gemini solo procesa ~5-10 páginas por minuto antes de caer en 429. El fallback a pypdf es transparente: cada página que falla en Gemini se extrae con pypdf sin interrumpir el proceso. El texto resultante es completo y válido para RAG.
+
+Para el pipeline de usuarios (documentos individuales de máx. 10 MB / ~40 páginas), Gemini suele terminar sin alcanzar el límite. El seed es el único caso que procesa 81 páginas de corrido.
