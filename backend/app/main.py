@@ -6,6 +6,7 @@ from app.core.supabase_client import supabase
 from app.base_conocimiento.router import router as documentos_router
 from app.temas.router import router as temas_router
 from app.chat.router import router as chat_router
+from app.evaluaciones.router import router as evaluaciones_router
 
 app = FastAPI(title="ChatERP API")
 
@@ -21,6 +22,7 @@ app.add_middleware(
 app.include_router(documentos_router)
 app.include_router(temas_router)
 app.include_router(chat_router)
+app.include_router(evaluaciones_router)
 
 
 @app.get("/health")
