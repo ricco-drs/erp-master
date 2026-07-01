@@ -547,3 +547,64 @@ Auditoría de todas las rutas bajo `app/(protected)/`:
 | `perfil/page.tsx` | ya tenía responsive | — ✅ |
 
 Todas las páginas protegidas respetan ahora `24px 16px` de padding en mobile. ✅
+
+---
+
+## Bloque 9 — Cierre de fase
+
+### Archivos modificados o creados en Fase 7
+
+**Backend:**
+- `backend/app/base_conocimiento/embeddings.py` — caché LRU para `generar_embedding()`
+- `backend/app/chat/service.py` — filtro de prompt injection (`_INJECTION_PATTERNS`)
+- `backend/app/main.py` — logging centralizado + global exception handler HTTP 503
+- `.gitignore` — reforzado con `backend/.env.*`, `frontend/.env.*`, `__pycache__/`
+
+**Frontend:**
+- `frontend/lib/use-breakpoint.ts` — hook creado (`isMobile / isTablet / isDesktop`)
+- `frontend/app/(protected)/layout.tsx` — sidebar drawer mobile con backdrop overlay
+- `frontend/components/sidebar.tsx` — prop `onClose?` añadida
+- `frontend/app/(protected)/dashboard/page.tsx` — reescrito como pantalla de inicio real
+- `frontend/app/(protected)/chat/page.tsx` — padding responsive
+- `frontend/app/(protected)/chat/[sesionId]/page.tsx` — padding responsive (3 zonas)
+- `frontend/app/(protected)/evaluaciones/page.tsx` — padding responsive
+- `frontend/app/(protected)/evaluaciones/[intentoId]/page.tsx` — padding responsive (3 zonas)
+- `frontend/app/(protected)/evaluaciones/[intentoId]/resultados/page.tsx` — padding responsive
+- `frontend/app/(protected)/documentos/page.tsx` — tabla responsive 3 breakpoints, error inline
+- `frontend/app/(protected)/perfil/page.tsx` — stats grid responsive, padding responsive
+
+**SQL / docs:**
+- `sql/05_escalabilidad_explain_analyze.sql` — queries de auditoría HNSW para Supabase Dashboard
+- `fases/fase-7/IMPLEMENTATIONS-FASE-7.md` — este archivo
+- `docs/fases-proyecto.md` — Fase 7 marcada ✅ Completada
+
+### RNF cubiertos
+
+| RNF | Descripción | Estado |
+|---|---|---|
+| RNF-01 | Tiempo de respuesta chat ≤ 8s | ✅ Verificado (2.7s promedio) |
+| RNF-02 | Tiempo de generación evaluación ≤ 15s | ✅ Verificado (4–7s) |
+| RNF-03 | Modelo de embeddings: singleton, sin recarga por request | ✅ Verificado + caché LRU añadida |
+| RNF-04 | Contraseñas gestionadas por Supabase Auth | ✅ Sin endpoint de auth en backend |
+| RNF-05 | Secretos fuera del código fuente | ✅ `.gitignore` reforzado, historial limpio |
+| RNF-06 | JWT requerido en todos los endpoints de datos | ✅ Auditado, `service_role` solo en backend |
+| RNF-07 | HTTPS en producción | ✅ Vercel + Render/Railway por defecto |
+| RNF-08 | Validación de archivos en subida | ✅ Extensión + tamaño desde Fase 3 |
+| RNF-09 | Responsividad mobile ≥ 320px | ✅ Drawer sidebar + padding + grids adaptativos |
+| RNF-10 | Errores inline (sin `alert()`) | ✅ `alert()` reemplazado por estado inline |
+| RNF-11 | Estados de carga visibles | ✅ Auditado en todas las páginas |
+| RNF-12 | Groq caído: reintentos y mensaje claro | ✅ MAX_REINTENTOS=2, backoff, catch en router |
+| RNF-13 | Supabase caído: respuesta degradada | ✅ Try/catch en retriever + handler global 503 |
+| RNF-14 | Restart del backend: sin estado remanente | ✅ Backend stateless verificado |
+| RNF-15 | Índice vectorial HNSW activo | ✅ `idx_chunk_embedding hnsw vector_cosine_ops` |
+| RNF-16 | Límites de contexto y tokens controlados | ✅ `top_k`, `max_chars`, `MAX_TURNOS_HISTORIAL` |
+| RNF-17 | Control de costos: historial limitado | ✅ `MAX_TURNOS_HISTORIAL=6`, estimación tokens |
+| RNF-18 | Logging estructurado sin datos sensibles | ✅ `dictConfig` centralizado, inventario completo |
+| RNF-19 | Compatibilidad Chrome/Edge/Firefox 120+ | ✅ Auditado, sin APIs experimentales |
+
+### Pendientes que quedan para Fase 8 / antes de entrega
+
+- Aplicar en Supabase Dashboard: `sql/02_rls_fix_autenticados.sql` y `sql/04_rls_evaluaciones_verificacion.sql` (pendiente desde Fases 3 y 5 respectivamente).
+- Ejecutar checklist de verificación manual en Chrome, Edge y Firefox (ver Bloque 7).
+- Fase 8: contingencia Ollama + Supabase local (plan B documentado).
+- Fase 9: documentación final y entrega.

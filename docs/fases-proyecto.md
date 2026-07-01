@@ -11,11 +11,22 @@ Registro del avance por fases del proyecto.
 | 4 | Chat conversacional con RAG | ✅ Completada |
 | 5 | Evaluaciones (generación, calificación automática) | ✅ Completada |
 | 6 | Perfil de usuario e historial | ✅ Completada |
-| 7 | Polish / landing page / UX final | 🔲 Pendiente |
+| 7 | Endurecimiento (RNF) y pulido de UI | ✅ Completada |
 | 8 | Contingencia y plan B (Ollama, Supabase local) | 🔲 Pendiente |
 | 9 | Documentación final y entrega | 🔲 Pendiente |
 
 ## Notas por fase
+
+### Fase 7 — Completada
+
+- **Bloque 1 — Rendimiento (RNF-01, 02, 03)**: singleton del modelo `all-MiniLM-L6-v2` verificado (carga una sola vez por proceso). Caché LRU `maxsize=256` añadida a `generar_embedding()` — queries repetidas: 0ms vs ~200ms de `encode()`. Tiempos medidos: chat RAG promedio 2.7s (≤ 8s ✅), generación evaluación 4–7s (≤ 15s ✅).
+- **Bloque 2 — Seguridad (RNF-04 al 08)**: filtro de prompt injection en `chat/service.py` con 14 patrones regex y lookaheads negativos (6/6 ataques bloqueados, 3/3 mensajes legítimos pasan). `.gitignore` reforzado: `backend/.env.*`, `frontend/.env.*`, `__pycache__/`. Auditado: `service_role` solo en backend, 0 resultados en frontend grep. JWT requerido en todos los endpoints de datos.
+- **Bloque 3 — Usabilidad (RNF-09, 10, 11)**: hook `useBreakpoint` creado. Layout con sidebar drawer mobile (overlay + backdrop). Tabla de documentos con 3 layouts (mobile/tablet/desktop) via `cols` variable. `alert()` reemplazado por error inline. Stats grid del perfil 4→2 columnas en mobile. Todos los estados de carga verificados.
+- **Bloque 4 — Disponibilidad (RNF-12, 13, 14)**: backend stateless verificado. Global exception handler (`@app.exception_handler(Exception)`) añadido en `main.py` — cualquier excepción no capturada devuelve HTTP 503 legible. Flujo Groq-caído ya cubierto con reintentos + catch en router. Retriever devuelve `[]` si Supabase cae durante búsqueda vectorial.
+- **Bloque 5 — Escalabilidad (RNF-15, 16)**: índice HNSW `vector_cosine_ops` verificado en esquema. `sql/05_escalabilidad_explain_analyze.sql` creado con 6 queries de auditoría (EXPLAIN ANALYZE, conteo de chunks, parámetros HNSW). Límites de contexto documentados: `top_k=5`, `max_chars=6000`, `MAX_TURNOS_HISTORIAL=6`. Estimación: ~2800 tokens/request de chat.
+- **Bloque 6 — Costos y logging (RNF-17, 18)**: logging centralizado con `logging.config.dictConfig` en `main.py` (formato timestamp + nivel + módulo + mensaje; `httpx`/`sentence_transformers` silenciados en WARNING). Inventario completo de eventos logueados por módulo. Verificado que ningún log expone datos sensibles (JWT, claves, contenido completo).
+- **Bloque 7 — Compatibilidad (RNF-19)**: auditoría completa del código — ninguna API sin soporte en Chrome/Edge/Firefox 120+. `inset: 0` soportado desde v87. `sessionStorage` con fallback API. Sin APIs experimentales. Checklist de verificación manual documentado.
+- **Bloque 8 — Pulido visual**: dashboard reescrito (prototipo técnico → pantalla de inicio con saludo personalizado, stats de progreso, 3 quick-links). Padding responsive `isMobile ? "24px 16px" : "40px 48px"` aplicado a las 10 páginas restantes que lo tenían fijo (chat, evaluaciones, resultados — incluyendo header/cuerpo/footer de cada página con layout sticky).
 
 ### Fase 6 — Completada
 
