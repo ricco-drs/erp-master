@@ -140,3 +140,78 @@ Flujo de orquestación:
 - Ollama sin servidor (plan B): lanza `LLMError` con mensaje en español ("Verificá que Ollama esté corriendo") ✅
 - Proveedor inválido: lanza `LLMError` explicando los valores aceptados ✅
 - Cambio de proveedor: solo requiere modificar `LLM_PROVIDER` en `.env`, sin tocar código ✅
+
+---
+
+## Bloque 4 — Persistencia de sesiones y mensajes
+
+### Archivos creados
+
+**`backend/app/chat/router.py`**
+
+4 endpoints JWT-protegidos mediante `Depends(get_current_user_id)`:
+
+| Método | Ruta | Descripción |
+|--------|------|-------------|
+| `POST` | `/chat/sesiones` | Crea una nueva sesión para el usuario autenticado |
+| `POST` | `/chat/sesiones/{id}/mensajes` | Envía mensaje, ejecuta pipeline RAG completo, persiste ambos mensajes |
+| `GET`  | `/chat/sesiones` | Lista sesiones del usuario ordenadas por fecha descendente |
+| `GET`  | `/chat/sesiones/{id}/mensajes` | Devuelve historial completo de una sesión |
+
+Helpers internos:
+- `_verificar_sesion_propia(sesion_id, user_id)` → 404 si no existe, 403 si pertenece a otro usuario.
+- `_cargar_historial(sesion_id)` → lista de `MensajeChat` ordenada por `enviado_en`.
+
+Flujo de `POST /mensajes`: verificar sesión → cargar historial → RAG (`procesar_mensaje`) → persistir mensaje usuario → persistir respuesta asistente → devolver `EnviarMensajeResponse`.
+
+`LLMError` del pipeline → HTTP 503 con mensaje amigable (no rompe la sesión).
+
+**`backend/app/main.py`** — `chat_router` registrado con `app.include_router(chat_router)`.
+
+### Verificación
+- Crear sesión con tema válido → 201 con `sesion_id`, `tema_id`, `iniciada_en` ✅
+- Crear sesión con tema inexistente → 422 ✅
+- Enviar mensaje on-topic → respuesta LLM, `fuera_de_alcance=False`, `chunks_usados=5` ✅
+- Enviar mensaje off-topic → rechazo inmediato, `fuera_de_alcance=True`, sin llamar al LLM ✅
+- Turno 2 con historial de BD → pregunta relacionada obtiene respuesta coherente ✅
+- Mensajes persistidos en BD → 4 filas para 2 turnos (usuario+asistente×2) ✅
+- Acceso de otro usuario a sesión ajena → 403 ✅
+- 4 endpoints en OpenAPI schema (`GET, POST /chat/sesiones` | `POST, GET /chat/sesiones/{id}/mensajes`) ✅
+
+---
+
+## Bloque 5 — Control de consumo y reintentos del LLM
+
+### Archivos modificados
+
+**`backend/app/core/llm_provider.py`** *(ampliado)*
+
+Cambios respecto al Bloque 1:
+
+1. **Logging estructurado** — cada llamada al LLM registra:
+   - `[LLM] proveedor=groq modelo=llama-3.3-70b-versatile intento=N tokens=47 tiempo=0.88s` (éxito)
+   - `[LLM] proveedor=groq intento=N/3 error=... tiempo=Xs` (fallo por intento)
+   - `[LLM] Todos los reintentos fallaron. Último error: ...` (fallo definitivo)
+
+2. **`MAX_REINTENTOS = 2`** — hasta 3 intentos totales (1 inicial + 2 reintentos).
+
+3. **Backoff exponencial** — `_BACKOFF_BASE = 2.0`: backoff en segundos = `2^intento` → intento 2 espera 2s, intento 3 espera 4s.
+
+4. **Política de retry selectiva** — solo se reintenta ante errores de timeout (`"timeout"` o `"tiempo"` en el mensaje). Errores definitivos (cuota agotada, auth inválida, proveedor inválido) no se reintentan — fallan inmediatamente.
+
+5. **Mensaje amigable final** — si todos los reintentos fallan, el `LLMError` levantado tiene siempre el mensaje: `"El asistente no está disponible en este momento. Por favor, intentá de nuevo en unos segundos."` (el mensaje técnico va al log, no al usuario).
+
+6. **Tokens reportados** — Groq devuelve `response.usage.total_tokens`; Ollama devuelve `eval_count` (tokens generados). Ambos registrados en el log como `tokens=N` (`"n/a"` si el proveedor no los reporta).
+
+**`backend/app/chat/service.py`** — log de rechazo por alcance actualizado:
+```
+[RAG] Rechazada por alcance — llamada al LLM omitida. query=... tema=...
+```
+Permite auditar en logs cuántas preguntas fueron rechazadas antes de llegar al LLM.
+
+### Verificación
+- Llamada exitosa a Groq: log con `tokens=47`, `tiempo=0.88s` ✅
+- Off-topic: log `[RAG] Rechazada por alcance` sin ningún log `[LLM]` ✅
+- Proveedor inválido: `LLMError` inmediato (sin retry) ✅
+- Timeout simulado × 2 → recuperación exitosa en el 3er intento ✅
+- Timeout permanente × 3 → `LLMError` con mensaje amigable (técnico en log) ✅

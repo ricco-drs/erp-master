@@ -71,7 +71,11 @@ def procesar_mensaje(
     chunks = recuperar_contexto(mensaje, tema_id=tema_id)
 
     if not chunks:
-        logger.info("Sin contexto relevante para: %r (tema=%s)", mensaje[:60], tema_id)
+        logger.info(
+            "[RAG] Rechazada por alcance — llamada al LLM omitida. query=%r tema=%s",
+            mensaje[:60],
+            tema_id,
+        )
         return RespuestaChat(
             contenido=_RESPUESTA_SIN_CONTEXTO,
             fuera_de_alcance=True,
