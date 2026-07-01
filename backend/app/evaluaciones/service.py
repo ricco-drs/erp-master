@@ -419,12 +419,16 @@ def generar_evaluacion(
     for intento in range(1, 3):  # máx 2 intentos
         try:
             texto_llm = completar(messages, temperature=0.4, max_tokens=2500)
+            logger.debug(
+                "[EVAL] Raw LLM response intento %d (primeros 300 chars): %.300s",
+                intento, texto_llm,
+            )
             preguntas_data = _parsear_preguntas(texto_llm)
             logger.info("[EVAL] JSON parseado OK en intento %d (%d preguntas)", intento, len(preguntas_data))
             break
         except ValueError as e:
             ultimo_error = e
-            logger.warning("[EVAL] JSON malformado intento %d: %s", intento, e)
+            logger.warning("[EVAL] JSON malformado intento %d: %s — raw=%.200s", intento, e, texto_llm)
         except LLMError:
             raise  # LLMError se propaga directo (el router la convierte en 503)
 

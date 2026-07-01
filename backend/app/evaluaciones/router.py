@@ -124,10 +124,18 @@ async def generar(
     body: GenerarEvaluacionRequest,
     user_id: str = Depends(get_current_user_id),
 ):
+    logger.info(
+        "[EVAL] POST /generar — tema_id=%s n_preguntas=%d user=%s",
+        body.tema_id, body.n_preguntas, user_id,
+    )
+
     # Verificar que el tema existe
-    tema_resp = supabase.table("tema").select("id").eq("id", body.tema_id).single().execute()
+    tema_resp = supabase.table("tema").select("id, nombre").eq("id", body.tema_id).single().execute()
     if not tema_resp.data:
+        logger.error("[EVAL] tema_id=%s no existe en la tabla tema", body.tema_id)
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "El tema indicado no existe.")
+
+    logger.info("[EVAL] Tema encontrado: %s", tema_resp.data.get("nombre"))
 
     if not (3 <= body.n_preguntas <= 15):
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "n_preguntas debe estar entre 3 y 15.")
@@ -135,10 +143,19 @@ async def generar(
     try:
         ev = generar_evaluacion(body.tema_id, n_preguntas=body.n_preguntas)
     except RuntimeError as e:
+        logger.error(
+            "[EVAL] Sin chunks indexados — tema_id=%s error=%s",
+            body.tema_id, e,
+        )
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(e))
     except ValueError as e:
+        logger.error(
+            "[EVAL] JSON inválido del LLM — tema_id=%s error=%s",
+            body.tema_id, e,
+        )
         raise HTTPException(status.HTTP_502_BAD_GATEWAY, f"Error generando preguntas: {e}")
     except LLMError as e:
+        logger.error("[EVAL] LLM no disponible — tema_id=%s error=%s", body.tema_id, e)
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, f"El asistente no está disponible: {e}")
 
     # Nunca exponer respuesta_correcta al cliente

@@ -30,22 +30,25 @@ def recuperar_contexto(
     umbral: float = UMBRAL_SIMILITUD,
 ) -> list[ChunkRecuperado]:
     """
-    Busca los top_k chunks más relevantes para `query` dentro del `tema_id`.
+    Busca los top_k chunks más relevantes para `query` en la base de conocimiento.
+
+    Estrategia A: busca en TODOS los documentos con estado_moderacion='aprobado',
+    sin filtrar por tema_id. Esto permite que el corpus compartido/predefinido
+    esté disponible para todos los temas, aunque el documento haya sido indexado
+    bajo un único tema_id.
+
+    El parámetro tema_id se conserva en la firma para trazabilidad en los logs
+    y para futura implementación de la Estrategia B (filtro por tema).
 
     Pasos:
     1. Genera el embedding de la pregunta del usuario.
-    2. Llama a la función SQL `match_chunks` en Supabase (búsqueda HNSW coseno).
-    3. Filtra por `umbral` de similitud (ya pre-filtrado en SQL para eficiencia).
-    4. Devuelve lista ordenada de mayor a menor similitud.
-
-    Si no hay ningún chunk que supere el umbral, devuelve lista vacía.
-    Eso es lo que el servicio de chat usa para decidir si rechaza la pregunta
-    por fuera de alcance, sin llamar al LLM.
+    2. Llama a match_chunks con p_tema_id=None (todos los docs aprobados).
+    3. Devuelve lista ordenada de mayor a menor similitud.
     """
     # 1. Embedding de la query
     vector = generar_embedding(query)
 
-    # 2. Búsqueda vectorial vía RPC (función SQL con índice HNSW)
+    # 2. Búsqueda vectorial vía RPC — p_tema_id=None para buscar en todo el corpus aprobado
     try:
         resp = supabase.rpc(
             "match_chunks",
@@ -53,7 +56,7 @@ def recuperar_contexto(
                 "query_embedding": vector,
                 "match_threshold": umbral,
                 "match_count": top_k,
-                "p_tema_id": tema_id,
+                "p_tema_id": None,
             },
         ).execute()
     except Exception as e:
@@ -77,7 +80,7 @@ def recuperar_contexto(
     chunks.sort(key=lambda c: c.similitud, reverse=True)
 
     logger.info(
-        "Retriever: query=%r tema=%s → %d chunks (umbral=%.2f)",
+        "Retriever: query=%r tema=%s (sin filtro tema) → %d chunks (umbral=%.2f)",
         query[:60],
         tema_id,
         len(chunks),

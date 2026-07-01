@@ -35,29 +35,21 @@ MAX_TURNOS_HISTORIAL = 6
 
 # System prompt del asistente — instruye al LLM sobre su rol y límites.
 _SYSTEM_PROMPT = """\
-Eres un asistente de capacitación especializado en sistemas ERP (Enterprise Resource Planning).
-Tu función es ayudar a los usuarios a aprender sobre ERP basándote EXCLUSIVAMENTE en el contexto
-de documentos que se te proporcionarán en cada pregunta.
+Eres un asistente especializado en sistemas ERP (Enterprise Resource Planning).
+Responde usando el contexto de documentos provisto si está disponible. Si no hay contexto
+específico, usa tu conocimiento general sobre ERP para ayudar al usuario.
 
-Reglas que DEBES seguir sin excepción:
-1. Responde ÚNICAMENTE usando la información del contexto proporcionado. Si la respuesta no
-   está en ese contexto, dilo claramente — no inventes ni uses conocimiento externo.
-2. Si el usuario pregunta algo ajeno a ERP, gestión empresarial o temas relacionados,
-   responde amablemente que estás especializado solo en ERP y no puedes ayudar con eso.
-3. Mantén un tono de tutor paciente y claro. Usa ejemplos concretos cuando el contexto lo permita.
-4. Si el contexto no tiene suficiente información para responder con certeza, dilo y sugiere
-   al usuario consultar la documentación del sistema ERP específico que esté utilizando.
-5. Responde siempre en español, independientemente del idioma del usuario.
-6. No menciones que estás basándote en "fragmentos" o "chunks" — habla naturalmente como
-   si el conocimiento fuera tuyo, pero ceñido a lo que el contexto realmente dice.\
+Reglas:
+1. Si se proporciona contexto de documentos, priorízalo — es la fuente más actualizada y
+   específica para el tema. Ceñite a lo que el contexto realmente dice.
+2. Si no hay contexto disponible, respondé desde tu conocimiento general sobre ERP,
+   gestión empresarial y tecnología organizacional. Sé claro y útil.
+3. Solo rechazá preguntas que no tengan ninguna relación con sistemas ERP, tecnología
+   empresarial o temas laborales/organizacionales. Rechazalas amablemente.
+4. Mantené un tono de tutor paciente y claro. Usá ejemplos concretos cuando sea posible.
+5. Respondé siempre en español, independientemente del idioma del usuario.
+6. No menciones que estás basándote en "fragmentos" o "chunks" — hablá naturalmente.\
 """
-
-# Mensaje de rechazo cuando no hay contexto relevante.
-_RESPUESTA_SIN_CONTEXTO = (
-    "No encontré información relevante sobre esa pregunta en la base de conocimiento "
-    "del tema seleccionado. Intentá reformular la pregunta usando términos más específicos "
-    "de ERP, o seleccioná un tema diferente que se relacione mejor con lo que querés aprender."
-)
 
 
 @dataclass
@@ -101,31 +93,22 @@ def procesar_mensaje(
     # 2. Recuperar contexto
     chunks = recuperar_contexto(mensaje, tema_id=tema_id)
 
-    if not chunks:
+    # 3. Armar mensajes — con contexto si hay chunks, sin contexto (conocimiento general) si no
+    if chunks:
+        contexto_texto = construir_contexto_texto(chunks)
+        messages = _construir_messages(mensaje, contexto_texto, historial)
         logger.info(
-            "[RAG] Rechazada por alcance — llamada al LLM omitida. query=%r tema=%s",
-            mensaje[:60],
-            tema_id,
+            "Llamando LLM con contexto: tema=%s chunks=%d historial=%d turnos",
+            tema_id, len(chunks), len(historial),
         )
-        return RespuestaChat(
-            contenido=_RESPUESTA_SIN_CONTEXTO,
-            fuera_de_alcance=True,
-            chunks_usados=0,
+    else:
+        messages = _construir_messages_sin_contexto(mensaje, historial)
+        logger.info(
+            "Llamando LLM sin contexto (conocimiento general): tema=%s historial=%d turnos",
+            tema_id, len(historial),
         )
-
-    # 2. Construir el bloque de contexto
-    contexto_texto = construir_contexto_texto(chunks)
-
-    # 3. Armar los mensajes para el LLM
-    messages = _construir_messages(mensaje, contexto_texto, historial)
 
     # 4. Llamar al LLM (puede lanzar LLMError)
-    logger.info(
-        "Llamando LLM: tema=%s chunks=%d historial=%d turnos",
-        tema_id,
-        len(chunks),
-        len(historial),
-    )
     respuesta_texto = completar(messages, temperature=0.3, max_tokens=1024)
 
     return RespuestaChat(
@@ -163,5 +146,26 @@ def _construir_messages(
         f"Pregunta: {mensaje_usuario}"
     )
     messages.append({"role": "user", "content": prompt_usuario})
+
+    return messages
+
+
+def _construir_messages_sin_contexto(
+    mensaje_usuario: str,
+    historial: list[MensajeChat],
+) -> list[dict[str, str]]:
+    """
+    Construye los mensajes para el LLM cuando no hay contexto de documentos.
+    El LLM responde desde su conocimiento general sobre ERP.
+    Mismo formato que _construir_messages pero sin el bloque de contexto.
+    """
+    messages: list[dict[str, str]] = [{"role": "system", "content": _SYSTEM_PROMPT}]
+
+    turnos_recientes = historial[-(MAX_TURNOS_HISTORIAL * 2):]
+    for msg in turnos_recientes:
+        role = "user" if msg.rol == "usuario" else "assistant"
+        messages.append({"role": role, "content": msg.contenido})
+
+    messages.append({"role": "user", "content": mensaje_usuario})
 
     return messages
