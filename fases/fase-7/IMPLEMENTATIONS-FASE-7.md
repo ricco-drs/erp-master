@@ -432,3 +432,80 @@ logging.config.dictConfig({
 - Ningún log incluye tokens JWT, claves API ni contraseñas.
 - El contenido de los mensajes se trunca a 60–120 chars en los logs (`mensaje[:60]`, `mensaje[:120]`).
 - El contenido de los documentos no se loguea (solo `nombre_archivo` y `chunks_generados`). ✅
+
+---
+
+## Bloque 7 — Compatibilidad de navegadores (RNF-19)
+
+**Navegadores objetivo:** Chrome 120+, Edge 120+, Firefox 120+ (Chromium-based y Gecko).
+
+### Stack tecnológico y soporte
+
+| Tecnología | Chrome 120 | Edge 120 | Firefox 120 | Notas |
+|---|---|---|---|---|
+| Next.js 16 + React 19 | ✅ | ✅ | ✅ | Transpila a ES5+; el bundle es compatible por construcción |
+| CSS Custom Properties (`var(--)`) | ✅ | ✅ | ✅ | Soporte desde Chrome 49 / Firefox 31 / Edge 16 |
+| CSS Flexbox | ✅ | ✅ | ✅ | Soporte universal |
+| CSS Grid + `gridTemplateColumns` | ✅ | ✅ | ✅ | Soporte desde Chrome 57 / Firefox 52 / Edge 16 |
+| `gap` en flex/grid | ✅ | ✅ | ✅ | Soporte desde Chrome 84 / Firefox 63 / Edge 84 |
+| `position: sticky` | ✅ | ✅ | ✅ | Soporte completo en todos los objetivos |
+| `position: fixed` + `inset: 0` | ✅ | ✅ | ✅ | `inset` shorthand: Chrome 87 / Firefox 87 / Edge 87 ✅ |
+| `fetch()` | ✅ | ✅ | ✅ | Soporte universal |
+| `Promise.all()` | ✅ | ✅ | ✅ | Soporte universal |
+| `async/await` | ✅ | ✅ | ✅ | Transpilado por Next.js si es necesario |
+| `sessionStorage` | ✅ | ✅ | ✅ | Soporte universal; usado para handoff de preguntas entre páginas |
+| `window.innerWidth` + `addEventListener("resize")` | ✅ | ✅ | ✅ | Soporte universal |
+| `window.confirm()` | ✅ | ✅ | ✅ | Soporte universal; usado en confirmaciones de eliminación |
+| Lucide React (SVG icons) | ✅ | ✅ | ✅ | SVG inline; compatible universalmente |
+| `@supabase/supabase-js` 2.x | ✅ | ✅ | ✅ | Usa `fetch` internamente; sin APIs experimentales |
+
+### Análisis de riesgos por API
+
+**`inset: 0` (layout.tsx:49) — overlay backdrop del drawer mobile**
+
+```tsx
+style={{ position: "fixed", inset: 0, zIndex: 40 }}
+```
+
+`inset` es shorthand de `top/right/bottom/left`. Soporte desde Chrome 87, Firefox 87, Edge 87. Los tres navegadores objetivo son versión 120+, por lo que no hay riesgo. ✅
+
+**`sessionStorage` — handoff de preguntas de evaluación**
+
+Usado en `evaluaciones/page.tsx` y `evaluaciones/[intentoId]/page.tsx`. `sessionStorage` está disponible en todos los navegadores objetivo. El código ya tiene fallback: si `sessionStorage` falla (p.ej. modo privado con storage bloqueado), el efecto lee las preguntas vía API en su lugar. ✅
+
+**CSS Custom Properties en `globals.css`**
+
+Todos los tokens del design system (`--bg-base`, `--accent`, etc.) se definen en `:root`. Los tres navegadores objetivo soportan custom properties desde versiones muy anteriores a 120. ✅
+
+**`repeat(auto-fill, minmax(240px, 1fr))` en chat/page.tsx**
+
+Patrón responsivo de grid sin media queries. Soporte completo en todos los objetivos. ✅
+
+**`window.confirm()` — diálogos de confirmación de eliminación**
+
+Usado en `perfil/page.tsx` y `documentos/page.tsx`. Soporte universal. Firefox puede bloquear `confirm()` si se llama desde dentro de un iframe en contextos específicos, pero en la app se llama desde el top-level document. ✅
+
+### Sin APIs experimentales ni flags requeridos
+
+Auditado el código de `app/`, `lib/` y `components/`: no se usan:
+- `ResizeObserver` / `IntersectionObserver` (no necesarios).
+- `crypto.subtle` (el auth lo maneja Supabase).
+- `structuredClone`, `Array.at()`, `Object.hasOwn()` (no presentes).
+- Web Components / Shadow DOM.
+- CSS `@layer`, `:has()`, `:is()` avanzados.
+
+### Checklist de verificación manual (ejecutar antes de entrega)
+
+Para confirmar en cada navegador (Chrome, Edge, Firefox):
+
+- [ ] Login y registro funcionan.
+- [ ] El sidebar se muestra correctamente en desktop.
+- [ ] En mobile (DevTools responsive), el drawer se abre y cierra.
+- [ ] El chat envía y recibe mensajes.
+- [ ] La tabla de documentos se adapta al viewport (desktop / tablet / mobile).
+- [ ] El grid de stats del perfil pasa a 2 columnas en mobile.
+- [ ] Las evaluaciones se generan y la página de resultados muestra el puntaje.
+- [ ] Los colores del design system se aplican (custom properties cargadas).
+- [ ] Los iconos de Lucide se renderizan (SVG).
+
+**Veredicto:** el stack no usa ninguna API sin soporte en Chrome 120+ / Edge 120+ / Firefox 120+. La compatibilidad está garantizada por construcción (Next.js transpila, CSS usa propiedades universales). ✅
