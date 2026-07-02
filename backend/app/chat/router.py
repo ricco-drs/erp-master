@@ -23,12 +23,14 @@ router = APIRouter(prefix="/chat", tags=["chat"])
 class CrearSesionRequest(BaseModel):
     tema_id: str | None = None
     caso_empresa_id: str | None = None
+    nombre: str | None = None
 
 
 class CrearSesionResponse(BaseModel):
     sesion_id: str
     tema_id: str | None
     caso_empresa_id: str | None
+    nombre: str | None = None
     iniciada_en: str
 
 
@@ -54,6 +56,7 @@ class SesionOut(BaseModel):
     id: str
     tema_id: str | None
     caso_empresa_id: str | None = None
+    nombre: str | None = None
     iniciada_en: str
     archivada: bool = False
 
@@ -76,7 +79,7 @@ def _verificar_sesion_propia(
     Por defecto bloquea sesiones con eliminada_en != NULL."""
     resp = (
         supabase.table("sesion_chat")
-        .select("id, usuario_id, tema_id, caso_empresa_id, iniciada_en, archivada, eliminada_en")
+        .select("id, usuario_id, tema_id, caso_empresa_id, nombre, iniciada_en, archivada, eliminada_en")
         .eq("id", sesion_id)
         .single()
         .execute()
@@ -141,19 +144,35 @@ async def crear_sesion(
         if caso_resp.data["usuario_id"] != user_id:
             raise HTTPException(status_code=403, detail="No tenés acceso a ese caso de empresa.")
 
+    # Resolver nombre del chat
+    nombre_chat = body.nombre
+    if not nombre_chat and body.tema_id:
+        # Si no se pasó nombre explícito pero hay tema_id, resolver desde la BD
+        try:
+            tema_res = supabase.table("tema").select("nombre").eq("id", body.tema_id).single().execute()
+            if tema_res.data:
+                nombre_chat = tema_res.data["nombre"]
+        except Exception:
+            pass
+
     sesion_id = str(uuid.uuid4())
-    resp = supabase.table("sesion_chat").insert({
+    insert_data = {
         "id": sesion_id,
         "usuario_id": user_id,
         "tema_id": body.tema_id,
         "caso_empresa_id": body.caso_empresa_id,
-    }).execute()
+    }
+    if nombre_chat:
+        insert_data["nombre"] = nombre_chat
+
+    resp = supabase.table("sesion_chat").insert(insert_data).execute()
 
     sesion = resp.data[0]
     return CrearSesionResponse(
         sesion_id=sesion["id"],
         tema_id=sesion["tema_id"],
         caso_empresa_id=sesion.get("caso_empresa_id"),
+        nombre=sesion.get("nombre"),
         iniciada_en=sesion["iniciada_en"],
     )
 
@@ -202,6 +221,7 @@ async def enviar_mensaje(
             mensaje=body.contenido.strip(),
             tema_id=tema_id,
             historial=historial,
+            user_id=user_id,
             documento_caso_id=documento_caso_id,
         )
     except LLMError as e:
@@ -217,6 +237,12 @@ async def enviar_mensaje(
         "rol_emisor": "usuario",
         "contenido": body.contenido.strip(),
     }).execute()
+
+    # Si la sesión no tiene nombre (chat general), asignar la primera pregunta como nombre
+    if not sesion.get("nombre"):
+        nombre_primer_msg = body.contenido.strip()[:80]
+        if nombre_primer_msg:
+            supabase.table("sesion_chat").update({"nombre": nombre_primer_msg}).eq("id", sesion_id).execute()
 
     # Persistir respuesta del asistente
     resp_msg = supabase.table("mensaje").insert({
@@ -236,6 +262,26 @@ async def enviar_mensaje(
 
 
 # ---------------------------------------------------------------------------
+# GET /chat/sesiones/{sesion_id} — obtener una sesión
+# ---------------------------------------------------------------------------
+
+@router.get("/sesiones/{sesion_id}", response_model=SesionOut)
+async def obtener_sesion(
+    sesion_id: str,
+    user_id: str = Depends(get_current_user_id),
+):
+    sesion = _verificar_sesion_propia(sesion_id, user_id)
+    return SesionOut(
+        id=sesion["id"],
+        tema_id=sesion["tema_id"],
+        caso_empresa_id=sesion.get("caso_empresa_id"),
+        nombre=sesion.get("nombre"),
+        iniciada_en=sesion["iniciada_en"],
+        archivada=sesion.get("archivada", False),
+    )
+
+
+# ---------------------------------------------------------------------------
 # GET /chat/sesiones — listar sesiones del usuario
 # ---------------------------------------------------------------------------
 
@@ -247,7 +293,7 @@ async def listar_sesiones(
 ):
     q = (
         supabase.table("sesion_chat")
-        .select("id, tema_id, caso_empresa_id, iniciada_en, archivada")
+        .select("id, tema_id, caso_empresa_id, nombre, iniciada_en, archivada")
         .eq("usuario_id", user_id)
     )
     if eliminadas:
@@ -260,6 +306,7 @@ async def listar_sesiones(
             id=s["id"],
             tema_id=s["tema_id"],
             caso_empresa_id=s.get("caso_empresa_id"),
+            nombre=s.get("nombre"),
             iniciada_en=s["iniciada_en"],
             archivada=s.get("archivada", False),
         )

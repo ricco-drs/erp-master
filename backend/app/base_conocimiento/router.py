@@ -152,11 +152,8 @@ async def subir_documento(
 async def listar_documentos(user_id: str = Depends(get_current_user_id)):
     resp = (
         supabase.table("documento")
-        .select("id, nombre_archivo, formato, visibilidad, estado_moderacion, motivo_rechazo, subido_en, tema_id, usuario_id, archivada_en, eliminada_en")
-        .or_(
-            f"usuario_id.eq.{user_id},"
-            "and(visibilidad.eq.compartido,estado_moderacion.eq.aprobado)"
-        )
+        .select("id, nombre_archivo, formato, visibilidad, estado_moderacion, motivo_rechazo, subido_en, tema_id, archivada_en, eliminada_en")
+        .eq("usuario_id", user_id)
         .is_("eliminada_en", "null")
         .is_("archivada_en", "null")
         .order("subido_en", desc=True)

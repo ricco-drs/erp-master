@@ -10,8 +10,8 @@ logger = logging.getLogger(__name__)
 
 # Umbral mínimo de similitud coseno (0.0 – 1.0).
 # Por debajo de este valor, el chunk no se considera relevante para la pregunta.
-# Un valor de 0.0 devuelve todo; 1.0 solo devuelve coincidencias exactas.
-UMBRAL_SIMILITUD = 0.50
+# Bajado a 0.45 para capturar más contexto relevante del sub-tema específico.
+UMBRAL_SIMILITUD = 0.45
 
 
 @dataclass
@@ -26,48 +26,90 @@ class ChunkRecuperado:
 def recuperar_contexto(
     query: str,
     tema_id: str | None,
-    top_k: int = 5,
+    user_id: str | None = None,
+    top_k: int = 6,
     umbral: float = UMBRAL_SIMILITUD,
 ) -> list[ChunkRecuperado]:
     """
     Busca los top_k chunks más relevantes para `query` en la base de conocimiento.
 
-    Estrategia A: busca en TODOS los documentos con estado_moderacion='aprobado',
-    sin filtrar por tema_id. Esto permite que el corpus compartido/predefinido
-    esté disponible para todos los temas, aunque el documento haya sido indexado
-    bajo un único tema_id.
+    Estrategia con tema_id:
+    - Si tema_id está definido: busca PRIMERO en chunks vinculados a ese tema
+      específico. Si no encuentra suficientes resultados (< 2 chunks),
+      hace fallback al corpus completo aprobado y fusiona los resultados.
+    - Si tema_id es None: busca directamente en todos los documentos aprobados.
 
-    El parámetro tema_id se conserva en la firma para trazabilidad en los logs
-    y para futura implementación de la Estrategia B (filtro por tema).
+    Filtra por user_id para que cada usuario solo vea:
+      - Sus propios documentos (privados)
+      - Documentos compartidos y aprobados (seed + terceros)
+    Excluye documentos archivados o eliminados.
+
+    Esto garantiza que el chatbot usa el material del sub-tema seleccionado
+    cuando hay contenido disponible para él.
 
     Pasos:
     1. Genera el embedding de la pregunta del usuario.
-    2. Llama a match_chunks con p_tema_id=None (todos los docs aprobados).
-    3. Devuelve lista ordenada de mayor a menor similitud.
+    2. Si hay tema_id: llama a match_chunks filtrando por ese tema.
+    3. Si no hay chunks suficientes (fallback): llama sin filtro de tema.
+    4. Devuelve lista fusionada y ordenada de mayor a menor similitud.
     """
-    # 1. Embedding de la query
     vector = generar_embedding(query)
+    chunks: list[ChunkRecuperado] = []
 
-    # 2. Búsqueda vectorial vía RPC — p_tema_id=None para buscar en todo el corpus aprobado
-    try:
-        resp = supabase.rpc(
-            "match_chunks",
-            {
-                "query_embedding": vector,
-                "match_threshold": umbral,
-                "match_count": top_k,
-                "p_tema_id": None,
-            },
-        ).execute()
-    except Exception as e:
-        logger.error("Error en búsqueda vectorial (match_chunks): %s", e)
-        return []
+    # Parámetros base para la RPC (incluye usuario si está disponible)
+    rpc_params_base = {
+        "query_embedding": vector,
+        "match_threshold": umbral,
+        "match_count": top_k,
+    }
+    if user_id:
+        rpc_params_base["p_usuario_id"] = user_id
 
-    if not resp.data:
-        return []
+    # Paso 1: Búsqueda filtrada por tema_id cuando hay sub-tema seleccionado
+    if tema_id:
+        try:
+            params = {**rpc_params_base, "p_tema_id": tema_id}
+            resp_tema = supabase.rpc("match_chunks", params).execute()
+            chunks = _mapear_chunks(resp_tema.data or [])
+            logger.info(
+                "Retriever (tema=%s): query=%r → %d chunks (umbral=%.2f)",
+                tema_id, query[:60], len(chunks), umbral,
+            )
+        except Exception as e:
+            logger.error("Error en búsqueda vectorial por tema %s: %s", tema_id, e)
 
-    # 3. Mapear a dataclass y ordenar por similitud descendente
-    chunks = [
+    # Paso 2: Fallback al corpus completo si no hay suficientes chunks del tema
+    # También corre cuando tema_id es None (chat general)
+    if len(chunks) < 2:
+        try:
+            params = {**rpc_params_base, "p_tema_id": None}
+            resp_all = supabase.rpc("match_chunks", params).execute()
+            chunks_all = _mapear_chunks(resp_all.data or [])
+
+            if tema_id and chunks_all:
+                logger.info(
+                    "Retriever fallback corpus completo: tema=%s query=%r → %d chunks adicionales",
+                    tema_id, query[:60], len(chunks_all),
+                )
+
+            # Fusionar: chunks del tema van primero (mayor prioridad), luego el corpus general
+            vistos = {c.id for c in chunks}
+            for c in chunks_all:
+                if c.id not in vistos:
+                    chunks.append(c)
+                    vistos.add(c.id)
+
+        except Exception as e:
+            logger.error("Error en búsqueda vectorial corpus completo: %s", e)
+
+    # Ordenar por similitud descendente y limitar a top_k
+    chunks.sort(key=lambda c: c.similitud, reverse=True)
+    return chunks[:top_k]
+
+
+def _mapear_chunks(rows: list[dict]) -> list[ChunkRecuperado]:
+    """Convierte las filas de la RPC en objetos ChunkRecuperado."""
+    return [
         ChunkRecuperado(
             id=row["id"],
             documento_id=row["documento_id"],
@@ -75,25 +117,15 @@ def recuperar_contexto(
             orden=row["orden"],
             similitud=float(row["similarity"]),
         )
-        for row in resp.data
+        for row in rows
     ]
-    chunks.sort(key=lambda c: c.similitud, reverse=True)
-
-    logger.info(
-        "Retriever: query=%r tema=%s (sin filtro tema) → %d chunks (umbral=%.2f)",
-        query[:60],
-        tema_id,
-        len(chunks),
-        umbral,
-    )
-
-    return chunks
 
 
 def recuperar_contexto_caso(
     query: str,
     documento_id: str,
-    top_k: int = 5,
+    user_id: str | None = None,
+    top_k: int = 6,
     umbral: float = UMBRAL_SIMILITUD,
 ) -> list[ChunkRecuperado]:
     """
@@ -101,9 +133,6 @@ def recuperar_contexto_caso(
     - Busca en el documento específico del caso (sin filtro de moderación).
     - Busca en el corpus general aprobado (igual que recuperar_contexto).
     - Fusiona resultados deduplicando por id, priorizando chunks del documento del caso.
-
-    El usuario definió que el chat de un caso usa el documento subido + toda la
-    base de conocimiento, relacionando el caso concreto con el saber general.
     """
     vector = generar_embedding(query)
 
@@ -119,21 +148,12 @@ def recuperar_contexto_caso(
                 "match_count": top_k,
             },
         ).execute()
-        chunks_caso = [
-            ChunkRecuperado(
-                id=row["id"],
-                documento_id=row["documento_id"],
-                contenido=row["contenido"],
-                orden=row["orden"],
-                similitud=float(row["similarity"]),
-            )
-            for row in (resp_caso.data or [])
-        ]
+        chunks_caso = _mapear_chunks(resp_caso.data or [])
     except Exception as e:
         logger.error("Error buscando en documento del caso %s: %s", documento_id, e)
 
     # 2. Corpus general aprobado
-    chunks_generales = recuperar_contexto(query, tema_id=None, top_k=top_k, umbral=umbral)
+    chunks_generales = recuperar_contexto(query, tema_id=None, user_id=user_id, top_k=top_k, umbral=umbral)
 
     # 3. Fusión — los chunks del caso van primero (mayor prioridad en el contexto)
     vistos: set[str] = set()

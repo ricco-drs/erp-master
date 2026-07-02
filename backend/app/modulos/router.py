@@ -147,6 +147,103 @@ async def obtener_modulo(
 
 
 # ---------------------------------------------------------------------------
+# GET /modulos/{modulo_id}/progreso-subtemas — estado por subtema del usuario
+# ---------------------------------------------------------------------------
+
+class SubtemaProgresoOut(BaseModel):
+    tema_id: str
+    nombre: str
+    orden: int
+    tiene_evaluaciones: bool
+    mejor_sobre_20: float | None
+    aprobado: bool
+
+
+_UMBRAL_APROBACION = 0.55  # 11/20
+
+
+@router.get("/{modulo_id}/progreso-subtemas", response_model=list[SubtemaProgresoOut])
+async def progreso_subtemas(
+    modulo_id: str,
+    user_id: str = Depends(get_current_user_id),
+):
+    mod_resp = (
+        supabase.table("modulo").select("id").eq("id", modulo_id).single().execute()
+    )
+    if not mod_resp.data:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Módulo no encontrado.")
+
+    temas_resp = (
+        supabase.table("tema")
+        .select("id, nombre, orden")
+        .eq("modulo_id", modulo_id)
+        .gte("orden", 1)
+        .order("orden")
+        .execute()
+    )
+    subtemas = temas_resp.data or []
+    if not subtemas:
+        return []
+
+    tema_ids = [t["id"] for t in subtemas]
+
+    # Todas las evaluaciones de nivel "tema" para estos subtemas
+    evals_resp = (
+        supabase.table("evaluacion")
+        .select("id, tema_id")
+        .eq("nivel", "tema")
+        .in_("tema_id", tema_ids)
+        .execute()
+    )
+    evals = evals_resp.data or []
+
+    # tema_id → set de evaluacion_ids
+    tema_evals: dict[str, list[str]] = {t["id"]: [] for t in subtemas}
+    for e in evals:
+        tema_evals[e["tema_id"]].append(e["id"])
+
+    all_eval_ids = [e["id"] for e in evals]
+
+    # Mejor puntaje por subtema (una sola query para todos)
+    tema_mejor: dict[str, float] = {}
+    if all_eval_ids:
+        intentos_resp = (
+            supabase.table("intento_evaluacion")
+            .select("evaluacion_id, puntaje_total")
+            .eq("usuario_id", user_id)
+            .in_("evaluacion_id", all_eval_ids)
+            .filter("completado_en", "not.is", "null")
+            .execute()
+        )
+        eval_to_tema = {e["id"]: e["tema_id"] for e in evals}
+        for intento in (intentos_resp.data or []):
+            tid = eval_to_tema.get(intento["evaluacion_id"])
+            if tid is None:
+                continue
+            puntaje = float(intento["puntaje_total"] or 0)
+            if tid not in tema_mejor or puntaje > tema_mejor[tid]:
+                tema_mejor[tid] = puntaje
+
+    resultado = []
+    for t in subtemas:
+        tid = t["id"]
+        tiene = bool(tema_evals[tid])
+        mejor_raw = tema_mejor.get(tid)
+        mejor_sobre_20 = round(mejor_raw * 20, 1) if mejor_raw is not None else None
+        aprobado = (mejor_raw is not None) and (mejor_raw >= _UMBRAL_APROBACION)
+        resultado.append(SubtemaProgresoOut(
+            tema_id=tid,
+            nombre=t["nombre"],
+            orden=t["orden"],
+            tiene_evaluaciones=tiene,
+            mejor_sobre_20=mejor_sobre_20,
+            aprobado=aprobado,
+        ))
+
+    return resultado
+
+
+# ---------------------------------------------------------------------------
 # GET /modulos/{modulo_id}/progreso — progreso del usuario en este módulo
 # ---------------------------------------------------------------------------
 
@@ -245,7 +342,7 @@ async def generar_resumen(
         "beneficios riesgos factores críticos de éxito",
     ]
     for q in queries:
-        chunks = recuperar_contexto(q, tema_id=None, top_k=5, umbral=0.25)
+        chunks = recuperar_contexto(q, tema_id=None, user_id=None, top_k=5, umbral=0.25)
         for c in chunks:
             if c.id not in vistos:
                 todos_los_chunks.append(c)

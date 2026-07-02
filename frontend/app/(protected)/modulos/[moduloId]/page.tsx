@@ -2,7 +2,10 @@
 
 import { useEffect, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
-import { ArrowLeft, ArrowRight, CheckCircle2, BookOpen, ClipboardList, Loader2, ChevronDown, ChevronUp } from "lucide-react";
+import {
+  ArrowLeft, ArrowRight, CheckCircle2, BookOpen,
+  ClipboardList, Loader2, ChevronDown, ChevronUp, AlertCircle,
+} from "lucide-react";
 import { useBreakpoint } from "@/lib/use-breakpoint";
 import { apiFetch } from "@/lib/api";
 
@@ -24,11 +27,20 @@ interface ModuloDetalle {
   subtemas: SubtemaOut[];
 }
 
+interface SubtemaProgreso {
+  tema_id: string;
+  tiene_evaluaciones: boolean;
+  mejor_sobre_20: number | null;
+  aprobado: boolean;
+}
+
 export default function ModuloDetallePage() {
   const router = useRouter();
   const { moduloId } = useParams<{ moduloId: string }>();
   const { isMobile } = useBreakpoint();
+
   const [modulo, setModulo] = useState<ModuloDetalle | null>(null);
+  const [progreso, setProgreso] = useState<Record<string, SubtemaProgreso>>({});
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState("");
   const [resumenExpanded, setResumenExpanded] = useState(false);
@@ -40,23 +52,35 @@ export default function ModuloDetallePage() {
       .then(setModulo)
       .catch(() => setError("No se pudo cargar el módulo."))
       .finally(() => setCargando(false));
+
+    apiFetch<SubtemaProgreso[]>(`/modulos/${moduloId}/progreso-subtemas`)
+      .then((data) => {
+        const map: Record<string, SubtemaProgreso> = {};
+        data.forEach((p) => { map[p.tema_id] = p; });
+        setProgreso(map);
+      })
+      .catch(() => {});
   }, [moduloId]);
 
   async function iniciarExamenFinal() {
     setGenerandoExamen(true);
     setErrorExamen("");
     try {
-      const ev = await apiFetch<{ evaluacion_id: string }>(`/evaluaciones/modulo/${moduloId}/generar`, {
+      const ev = await apiFetch<{
+        evaluacion_id: string;
+        preguntas: { id: string; tipo: string; enunciado: string; opciones: string[] | null }[];
+      }>(`/evaluaciones/modulo/${moduloId}/generar`, {
         method: "POST",
         body: JSON.stringify({ n_preguntas: 12 }),
       });
-      const intento = await apiFetch<{ intento_id: string }>(`/evaluaciones/${ev.evaluacion_id}/intentos`, {
-        method: "POST",
-      });
+      const intento = await apiFetch<{ intento_id: string }>(
+        `/evaluaciones/${ev.evaluacion_id}/intentos`,
+        { method: "POST" },
+      );
+      sessionStorage.setItem(`eval_preguntas_${intento.intento_id}`, JSON.stringify(ev.preguntas));
       router.push(`/evaluaciones/${intento.intento_id}`);
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : "No se pudo iniciar el examen.";
-      setErrorExamen(msg);
+      setErrorExamen(e instanceof Error ? e.message : "No se pudo iniciar el examen.");
     } finally {
       setGenerandoExamen(false);
     }
@@ -81,12 +105,29 @@ export default function ModuloDetallePage() {
   const subtemasPrincipales = modulo.subtemas.filter((s) => s.orden > 0);
   const subtemaLegado = modulo.subtemas.find((s) => s.orden === 0);
 
+  // Calcular si el usuario puede intentar el examen (todos los subtemas con
+  // evaluaciones tienen al menos un intento aprobado ≥ 11/20)
+  const subtemasBloqueantes = subtemasPrincipales.filter((s) => {
+    const p = progreso[s.id];
+    return p && p.tiene_evaluaciones && !p.aprobado;
+  });
+  const subtemasSinIntentar = subtemasPrincipales.filter((s) => {
+    const p = progreso[s.id];
+    return p && p.tiene_evaluaciones && p.mejor_sobre_20 === null;
+  });
+  const puedeExamen = subtemasBloqueantes.length === 0 && subtemasSinIntentar.length === 0;
+
   return (
     <div style={{ padding: isMobile ? "32px 16px" : "48px 48px", maxWidth: "860px", margin: "0 auto" }}>
       {/* Volver */}
       <button
         onClick={() => router.push("/modulos")}
-        style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "13px", color: "var(--text-muted)", background: "none", border: "none", cursor: "pointer", marginBottom: "24px", padding: 0 }}
+        style={{
+          display: "flex", alignItems: "center", gap: "6px",
+          fontSize: "13px", color: "var(--text-muted)",
+          background: "none", border: "none", cursor: "pointer",
+          marginBottom: "24px", padding: 0,
+        }}
       >
         <ArrowLeft size={14} />
         Todos los módulos
@@ -103,11 +144,13 @@ export default function ModuloDetallePage() {
           </h1>
         </div>
         {modulo.descripcion && (
-          <p style={{ fontSize: "14px", color: "var(--text-secondary)", lineHeight: 1.6 }}>{modulo.descripcion}</p>
+          <p style={{ fontSize: "14px", color: "var(--text-secondary)", lineHeight: 1.6 }}>
+            {modulo.descripcion}
+          </p>
         )}
       </div>
 
-      {/* Resumen IA (colapsable) */}
+      {/* Resumen IA */}
       {modulo.resumen_ia && (
         <div style={{ border: "1px solid var(--accent)", borderRadius: "var(--radius-md)", marginBottom: "36px", overflow: "hidden" }}>
           <button
@@ -133,7 +176,10 @@ export default function ModuloDetallePage() {
       )}
 
       {/* Sub-temas */}
-      <p style={{ fontSize: "11px", fontWeight: 500, letterSpacing: "0.08em", color: "var(--text-muted)", textTransform: "uppercase", marginBottom: "12px" }}>
+      <p style={{
+        fontSize: "11px", fontWeight: 500, letterSpacing: "0.08em",
+        color: "var(--text-muted)", textTransform: "uppercase", marginBottom: "12px",
+      }}>
         Sub-temas
       </p>
 
@@ -142,12 +188,17 @@ export default function ModuloDetallePage() {
           Este módulo todavía no tiene sub-temas configurados.
         </p>
       ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: "1px", border: "1px solid var(--border)", borderRadius: "var(--radius-md)", overflow: "hidden", backgroundColor: "var(--border)", marginBottom: "32px" }}>
+        <div style={{
+          display: "flex", flexDirection: "column", gap: "1px",
+          border: "1px solid var(--border)", borderRadius: "var(--radius-md)",
+          overflow: "hidden", backgroundColor: "var(--border)", marginBottom: "32px",
+        }}>
           {subtemasPrincipales.map((subtema, idx) => (
             <SubtemaRow
               key={subtema.id}
               subtema={subtema}
               numero={idx + 1}
+              progreso={progreso[subtema.id] ?? null}
               onClick={() => router.push(`/modulos/${moduloId}/subtemas/${subtema.id}`)}
             />
           ))}
@@ -155,6 +206,7 @@ export default function ModuloDetallePage() {
             <SubtemaRow
               subtema={subtemaLegado}
               numero={1}
+              progreso={null}
               onClick={() => router.push(`/modulos/${moduloId}/subtemas/${subtemaLegado.id}`)}
             />
           )}
@@ -162,22 +214,71 @@ export default function ModuloDetallePage() {
       )}
 
       {/* Evaluación final */}
-      <p style={{ fontSize: "11px", fontWeight: 500, letterSpacing: "0.08em", color: "var(--text-muted)", textTransform: "uppercase", marginBottom: "12px" }}>
+      <p style={{
+        fontSize: "11px", fontWeight: 500, letterSpacing: "0.08em",
+        color: "var(--text-muted)", textTransform: "uppercase", marginBottom: "12px",
+      }}>
         Evaluación final
       </p>
-      <div style={{ border: "1px solid var(--border)", borderRadius: "var(--radius-md)", padding: "20px 24px", backgroundColor: "var(--bg-surface)" }}>
-        <div style={{ display: "flex", alignItems: isMobile ? "flex-start" : "center", justifyContent: "space-between", gap: "16px", flexDirection: isMobile ? "column" : "row" }}>
-          <div>
+      <div style={{
+        border: `1px solid ${puedeExamen ? "var(--border)" : "var(--border)"}`,
+        borderRadius: "var(--radius-md)", padding: "20px 24px",
+        backgroundColor: "var(--bg-surface)",
+      }}>
+        <div style={{
+          display: "flex",
+          alignItems: isMobile ? "flex-start" : "center",
+          justifyContent: "space-between",
+          gap: "16px",
+          flexDirection: isMobile ? "column" : "row",
+        }}>
+          <div style={{ flex: 1 }}>
             <p style={{ fontSize: "14px", fontWeight: 500, color: "var(--text-primary)", marginBottom: "4px" }}>
               Examen Final — {modulo.nombre}
             </p>
-            <p style={{ fontSize: "13px", color: "var(--text-muted)", lineHeight: 1.5 }}>
-              12 preguntas que cubren todos los sub-temas. Necesitás completar al menos una evaluación por cada sub-tema.
+            <p style={{ fontSize: "13px", color: "var(--text-muted)", lineHeight: 1.5, marginBottom: "8px" }}>
+              12 preguntas que cubren todos los sub-temas. Necesitás aprobar (≥ 11/20) al menos una
+              evaluación por cada sub-tema antes de acceder.
             </p>
+
+            {/* Advertencias de bloqueo */}
+            {subtemasSinIntentar.length > 0 && (
+              <div style={{
+                display: "flex", alignItems: "flex-start", gap: "8px",
+                padding: "8px 12px", borderRadius: "var(--radius-sm)",
+                backgroundColor: "rgba(251,191,36,0.08)",
+                border: "1px solid rgba(251,191,36,0.2)", marginBottom: "6px",
+              }}>
+                <AlertCircle size={13} style={{ color: "#F59E0B", flexShrink: 0, marginTop: "1px" }} />
+                <p style={{ fontSize: "12px", color: "#F59E0B", lineHeight: 1.5 }}>
+                  Sin evaluar:{" "}
+                  {subtemasSinIntentar.map((s) => `"${s.nombre}"`).join(", ")}
+                </p>
+              </div>
+            )}
+            {subtemasBloqueantes.filter((s) => progreso[s.id]?.mejor_sobre_20 !== null).length > 0 && (
+              <div style={{
+                display: "flex", alignItems: "flex-start", gap: "8px",
+                padding: "8px 12px", borderRadius: "var(--radius-sm)",
+                backgroundColor: "rgba(239,68,68,0.08)",
+                border: "1px solid rgba(239,68,68,0.2)", marginBottom: "6px",
+              }}>
+                <AlertCircle size={13} style={{ color: "var(--danger)", flexShrink: 0, marginTop: "1px" }} />
+                <p style={{ fontSize: "12px", color: "var(--danger)", lineHeight: 1.5 }}>
+                  Nota insuficiente:{" "}
+                  {subtemasBloqueantes
+                    .filter((s) => progreso[s.id]?.mejor_sobre_20 !== null)
+                    .map((s) => `"${s.nombre}" (${progreso[s.id]?.mejor_sobre_20}/20)`)
+                    .join(", ")}
+                </p>
+              </div>
+            )}
+
             {errorExamen && (
-              <p style={{ fontSize: "13px", color: "var(--danger)", marginTop: "8px" }}>{errorExamen}</p>
+              <p style={{ fontSize: "13px", color: "var(--danger)", marginTop: "4px" }}>{errorExamen}</p>
             )}
           </div>
+
           <button
             onClick={iniciarExamenFinal}
             disabled={generandoExamen}
@@ -206,16 +307,58 @@ export default function ModuloDetallePage() {
   );
 }
 
+// ── SubtemaRow ────────────────────────────────────────────────────────────────
+
 function SubtemaRow({
   subtema,
   numero,
+  progreso,
   onClick,
 }: {
   subtema: SubtemaOut;
   numero: number;
+  progreso: SubtemaProgreso | null;
   onClick: () => void;
 }) {
   const [hover, setHover] = useState(false);
+
+  const scoreTag = (() => {
+    if (!progreso || !progreso.tiene_evaluaciones) return null;
+    if (progreso.mejor_sobre_20 === null) {
+      return (
+        <span style={{
+          fontSize: "11px", color: "var(--text-muted)",
+          backgroundColor: "rgba(255,255,255,0.05)",
+          padding: "2px 7px", borderRadius: "10px",
+          whiteSpace: "nowrap",
+        }}>
+          Sin evaluar
+        </span>
+      );
+    }
+    if (progreso.aprobado) {
+      return (
+        <span style={{
+          fontSize: "11px", fontWeight: 600, color: "var(--accent)",
+          backgroundColor: "var(--accent-muted)",
+          padding: "2px 8px", borderRadius: "10px",
+          whiteSpace: "nowrap",
+        }}>
+          ✓ {progreso.mejor_sobre_20}/20
+        </span>
+      );
+    }
+    return (
+      <span style={{
+        fontSize: "11px", fontWeight: 500, color: "#F59E0B",
+        backgroundColor: "rgba(245,158,11,0.1)",
+        padding: "2px 8px", borderRadius: "10px",
+        whiteSpace: "nowrap",
+      }}>
+        {progreso.mejor_sobre_20}/20
+      </span>
+    );
+  })();
 
   return (
     <button
@@ -230,24 +373,34 @@ function SubtemaRow({
         transition: "background-color 0.12s",
       }}
     >
-      <span style={{
-        display: "flex", alignItems: "center", justifyContent: "center",
-        width: "22px", height: "22px", flexShrink: 0,
-        fontSize: "11px", fontWeight: 600, color: "var(--text-muted)",
-        border: "1px solid var(--border-strong)", borderRadius: "4px",
-      }}>
-        {numero}
-      </span>
+      {/* Número / estado */}
+      {progreso?.aprobado ? (
+        <CheckCircle2 size={18} style={{ color: "var(--accent)", flexShrink: 0 }} />
+      ) : (
+        <span style={{
+          display: "flex", alignItems: "center", justifyContent: "center",
+          width: "22px", height: "22px", flexShrink: 0,
+          fontSize: "11px", fontWeight: 600, color: "var(--text-muted)",
+          border: "1px solid var(--border-strong)", borderRadius: "4px",
+        }}>
+          {numero}
+        </span>
+      )}
+
       <div style={{ flex: 1, minWidth: 0 }}>
-        <p style={{ fontSize: "14px", fontWeight: 400, color: "var(--text-primary)", marginBottom: "2px" }}>{subtema.nombre}</p>
+        <p style={{ fontSize: "14px", fontWeight: 400, color: "var(--text-primary)", marginBottom: "2px" }}>
+          {subtema.nombre}
+        </p>
         {subtema.descripcion && (
           <p style={{ fontSize: "12px", color: "var(--text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
             {subtema.descripcion}
           </p>
         )}
       </div>
+
       <div style={{ display: "flex", alignItems: "center", gap: "8px", flexShrink: 0 }}>
-        {subtema.preguntas_sugeridas && subtema.preguntas_sugeridas.length > 0 && (
+        {scoreTag}
+        {!scoreTag && subtema.preguntas_sugeridas && subtema.preguntas_sugeridas.length > 0 && (
           <span style={{ display: "flex", alignItems: "center", gap: "4px", fontSize: "11px", color: "var(--text-muted)" }}>
             <BookOpen size={11} />
             {subtema.preguntas_sugeridas.length} preguntas

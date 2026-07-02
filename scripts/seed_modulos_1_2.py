@@ -1,16 +1,12 @@
 """
-Seed de contenido educativo para los Módulos 1 y 2 del ERP-Chatbot.
+Seed de contenido educativo para los Módulos 1-5 del ERP-Chatbot.
 
-Lee los archivos Markdown de contenido/modulo_1_fundamentos/ y
-contenido/modulo_2_implementacion/, los fragmenta, genera embeddings
-locales (all-MiniLM-L6-v2 / 384 dims) y los inserta en Supabase como
-documentos aprobados y compartidos, vinculados al tema correspondiente.
+Lee los archivos Markdown de contenido/modulo_*/,  los fragmenta, genera
+embeddings locales (all-MiniLM-L6-v2 / 384 dims) y los inserta en Supabase
+como documentos aprobados y compartidos, vinculados al tema correspondiente.
 
 PREREQUISITOS:
-  - El schema de Supabase debe estar aplicado (incluyendo la columna
-    storage_path NOT NULL en la tabla documento).
-  - Los módulos y sub-temas deben existir en la tabla modulo/tema.
-    Si no existen, el script los crea.
+  - El schema de Supabase debe estar aplicado (incluyendo 07 y 08).
   - Variables de entorno en backend/.env:
       SUPABASE_URL
       SUPABASE_SERVICE_ROLE_KEY
@@ -51,8 +47,9 @@ supabase: Client = create_client(SUPABASE_URL, SERVICE_KEY)
 EMBEDDING_MODEL = os.environ.get("EMBEDDING_MODEL", "all-MiniLM-L6-v2")
 
 # ── Catálogo de contenido ─────────────────────────────────────────────────────
-# Estructura: list de módulos, cada uno con su nombre, descripción y sub-temas.
+# Estructura: list de módulos, cada uno con su nombre y sub-temas.
 # El campo "archivo" es relativo a ROOT/contenido/.
+# "nombre_bd" es el nombre EXACTO como está en la tabla `tema` de Supabase.
 
 MODULOS = [
     {
@@ -65,7 +62,8 @@ MODULOS = [
         "orden": 1,
         "subtemas": [
             {
-                "nombre": "Qué es un ERP y su evolución histórica",
+                "nombre_bd": "Qué es un ERP y evolución histórica",
+                "nombre_seed": "Qué es un ERP y su evolución histórica",
                 "descripcion": (
                     "Definición de ERP, el problema que resuelve, y la "
                     "evolución desde los sistemas de inventario de los 60 "
@@ -75,7 +73,8 @@ MODULOS = [
                 "archivo": "modulo_1_fundamentos/01_que_es_erp_y_evolucion.md",
             },
             {
-                "nombre": "Módulos típicos de un ERP",
+                "nombre_bd": "Módulos típicos de un ERP",
+                "nombre_seed": "Módulos típicos de un ERP",
                 "descripcion": (
                     "Descripción de los módulos estándar: Finanzas, Compras, "
                     "Inventario, Ventas, Producción, RRHH, Proyectos, CRM y BI. "
@@ -85,7 +84,8 @@ MODULOS = [
                 "archivo": "modulo_1_fundamentos/02_modulos_tipicos.md",
             },
             {
-                "nombre": "Beneficios y riesgos de adopción de un ERP",
+                "nombre_bd": "Beneficios y riesgos de adopción",
+                "nombre_seed": "Beneficios y riesgos de adopción de un ERP",
                 "descripcion": (
                     "Beneficios operativos y estratégicos de implementar un ERP. "
                     "Principales riesgos: resistencia al cambio, sobrecostos, "
@@ -95,7 +95,8 @@ MODULOS = [
                 "archivo": "modulo_1_fundamentos/03_beneficios_y_riesgos.md",
             },
             {
-                "nombre": "ERP vs. software de gestión tradicional",
+                "nombre_bd": "ERP vs. software de gestión tradicional",
+                "nombre_seed": "ERP vs. software de gestión tradicional",
                 "descripcion": (
                     "Comparativa entre ERP y sistemas en silos: integración, "
                     "fuente única de verdad, automatización, reportes en tiempo "
@@ -116,7 +117,8 @@ MODULOS = [
         "orden": 2,
         "subtemas": [
             {
-                "nombre": "Fases de un proyecto de implementación ERP",
+                "nombre_bd": "Fases de un proyecto de implementación",
+                "nombre_seed": "Fases de un proyecto de implementación ERP",
                 "descripcion": (
                     "Las 7 fases estándar: planificación, análisis y diseño "
                     "(Blueprint/Fit-Gap), configuración y desarrollo, pruebas, "
@@ -126,7 +128,8 @@ MODULOS = [
                 "archivo": "modulo_2_implementacion/01_fases_implementacion.md",
             },
             {
-                "nombre": "Factores críticos de éxito en una implementación ERP",
+                "nombre_bd": "Factores críticos de éxito",
+                "nombre_seed": "Factores críticos de éxito en una implementación ERP",
                 "descripcion": (
                     "Los 8 factores determinantes: compromiso ejecutivo, "
                     "usuarios clave empoderados, alcance definido, calidad de "
@@ -137,7 +140,8 @@ MODULOS = [
                 "archivo": "modulo_2_implementacion/02_factores_criticos.md",
             },
             {
-                "nombre": "Migración de datos en proyectos ERP",
+                "nombre_bd": "Migración de datos",
+                "nombre_seed": "Migración de datos en proyectos ERP",
                 "descripcion": (
                     "Tipos de datos (maestros vs. transaccionales de apertura), "
                     "etapas de migración (inventario, mapeo, extracción, limpieza, "
@@ -147,7 +151,8 @@ MODULOS = [
                 "archivo": "modulo_2_implementacion/03_migracion_datos.md",
             },
             {
-                "nombre": "Errores comunes en implementaciones ERP y cómo evitarlos",
+                "nombre_bd": "Errores comunes en la puesta en marcha",
+                "nombre_seed": "Errores comunes en implementaciones ERP y cómo evitarlos",
                 "descripcion": (
                     "Los errores más frecuentes por fase: selección incorrecta, "
                     "subestimación del esfuerzo, sobre-personalización, pruebas "
@@ -156,6 +161,114 @@ MODULOS = [
                 ),
                 "orden": 4,
                 "archivo": "modulo_2_implementacion/04_errores_comunes.md",
+            },
+        ],
+    },
+    {
+        "nombre": "Gestión del Cambio Organizacional",
+        "descripcion": (
+            "Factores humanos y organizacionales en la adopción de un ERP: "
+            "resistencia al cambio, comunicación, liderazgo y modelos de gestión."
+        ),
+        "orden": 3,
+        "subtemas": [
+            {
+                "nombre_bd": "Qué es la resistencia al cambio y por qué ocurre",
+                "nombre_seed": "Qué es la resistencia al cambio y por qué ocurre",
+                "descripcion": "Factores humanos y organizacionales que generan resistencia ante la adopción de un nuevo sistema ERP.",
+                "orden": 1,
+                "archivo": None,  # Cubierto por el PDF de la tesis
+            },
+            {
+                "nombre_bd": "Estrategias de comunicación durante la transición",
+                "nombre_seed": "Estrategias de comunicación durante la transición",
+                "descripcion": "Planes de comunicación, mensajes clave y canales para acompañar el proceso de cambio tecnológico.",
+                "orden": 2,
+                "archivo": None,
+            },
+            {
+                "nombre_bd": "Rol del liderazgo en la adopción",
+                "nombre_seed": "Rol del liderazgo en la adopción",
+                "descripcion": "Cómo los líderes de proyecto y directivos facilitan u obstaculizan la adopción del ERP.",
+                "orden": 3,
+                "archivo": None,
+            },
+            {
+                "nombre_bd": "Modelos de gestión del cambio",
+                "nombre_seed": "Modelos de gestión del cambio",
+                "descripcion": "Marcos de referencia aplicados a proyectos ERP: modelo ADKAR, los 8 pasos de Kotter y otros enfoques.",
+                "orden": 4,
+                "archivo": None,
+            },
+        ],
+    },
+    {
+        "nombre": "Ética Profesional en TI",
+        "descripcion": "Obligaciones éticas del profesional TI en proyectos ERP: confidencialidad, integridad y responsabilidad.",
+        "orden": 4,
+        "subtemas": [
+            {
+                "nombre_bd": "Confidencialidad y manejo de datos sensibles",
+                "nombre_seed": "Confidencialidad y manejo de datos sensibles",
+                "descripcion": "Obligaciones éticas y legales del profesional TI al trabajar con información organizacional crítica.",
+                "orden": 1,
+                "archivo": None,
+            },
+            {
+                "nombre_bd": "Integridad en el registro de información",
+                "nombre_seed": "Integridad en el registro de información",
+                "descripcion": "Responsabilidad sobre la exactitud, completitud y trazabilidad de los datos en un sistema ERP.",
+                "orden": 2,
+                "archivo": None,
+            },
+            {
+                "nombre_bd": "Responsabilidad profesional del implementador",
+                "nombre_seed": "Responsabilidad profesional del implementador",
+                "descripcion": "Alcance de las obligaciones del consultor o técnico frente al cliente durante y después del proyecto.",
+                "orden": 3,
+                "archivo": None,
+            },
+            {
+                "nombre_bd": "Dilemas éticos comunes en proyectos ERP",
+                "nombre_seed": "Dilemas éticos comunes en proyectos ERP",
+                "descripcion": "Situaciones de conflicto de interés, presión de plazos y sesgos en la toma de decisiones técnicas.",
+                "orden": 4,
+                "archivo": None,
+            },
+        ],
+    },
+    {
+        "nombre": "Capacitación y Desempeño Operativo",
+        "descripcion": "Diseño de programas de formación, medición del desempeño post-implementación y mejora continua del uso del ERP.",
+        "orden": 5,
+        "subtemas": [
+            {
+                "nombre_bd": "Diseño de programas de capacitación de usuarios",
+                "nombre_seed": "Diseño de programas de capacitación de usuarios",
+                "descripcion": "Metodologías para estructurar un plan de formación de usuarios finales antes y después del go-live.",
+                "orden": 1,
+                "archivo": None,
+            },
+            {
+                "nombre_bd": "Medición del desempeño post-implementación",
+                "nombre_seed": "Medición del desempeño post-implementación",
+                "descripcion": "Indicadores clave (KPIs) para evaluar si el ERP está generando el valor esperado en la operación.",
+                "orden": 2,
+                "archivo": None,
+            },
+            {
+                "nombre_bd": "Indicadores de adopción tecnológica",
+                "nombre_seed": "Indicadores de adopción tecnológica",
+                "descripcion": "Métricas de uso del sistema: tasa de adopción, errores de ingreso, tiempos de proceso y satisfacción del usuario.",
+                "orden": 3,
+                "archivo": None,
+            },
+            {
+                "nombre_bd": "Mejora continua del uso del sistema",
+                "nombre_seed": "Mejora continua del uso del sistema",
+                "descripcion": "Ciclos de retroalimentación, actualizaciones y re-capacitación para maximizar el retorno del ERP.",
+                "orden": 4,
+                "archivo": None,
             },
         ],
     },
@@ -178,7 +291,6 @@ def cargar_modelo_embeddings():
 
 
 def generar_embeddings_batch(model, textos: list[str]) -> list[list[float]]:
-    import numpy as np
     vectores = model.encode(textos, convert_to_numpy=True, batch_size=32, show_progress_bar=False)
     return vectores.tolist()
 
@@ -227,27 +339,46 @@ def get_or_create_modulo(nombre: str, descripcion: str, orden: int) -> str:
     return modulo_id
 
 
-def get_or_create_tema(nombre: str, descripcion: str, orden: int, modulo_id: str) -> str:
-    """Retorna el id del sub-tema, creándolo si no existe dentro del módulo."""
+def get_or_create_tema(nombre_bd: str, nombre_seed: str, descripcion: str, orden: int, modulo_id: str) -> str:
+    """
+    Busca el tema por nombre_bd (nombre exacto en la BD) dentro del módulo.
+    Si no existe con ese nombre, lo busca por nombre_seed.
+    Si tampoco existe, lo crea con nombre_bd.
+    """
+    # Intento 1: buscar por nombre_bd (nombre tal como está en la BD)
     res = (
         supabase.table("tema")
         .select("id")
-        .eq("nombre", nombre)
+        .eq("nombre", nombre_bd)
         .eq("modulo_id", modulo_id)
         .execute()
     )
     if res.data:
         return res.data[0]["id"]
 
+    # Intento 2: buscar por nombre_seed (nombre alternativo usado en el seed)
+    if nombre_seed != nombre_bd:
+        res2 = (
+            supabase.table("tema")
+            .select("id")
+            .eq("nombre", nombre_seed)
+            .eq("modulo_id", modulo_id)
+            .execute()
+        )
+        if res2.data:
+            return res2.data[0]["id"]
+
+    # No existe: crear con nombre_bd
     tema_id = str(uuid.uuid4())
     supabase.table("tema").insert({
         "id": tema_id,
-        "nombre": nombre,
+        "nombre": nombre_bd,
         "descripcion": descripcion,
         "orden": orden,
         "modulo_id": modulo_id,
+        "es_predefinido": True,
     }).execute()
-    print(f"      Sub-tema creado: '{nombre}' ({tema_id})")
+    print(f"      Sub-tema creado: '{nombre_bd}' ({tema_id})")
     return tema_id
 
 
@@ -266,12 +397,15 @@ def documento_ya_existe(storage_path: str, tema_id: str) -> bool:
 def seed_subtema(
     model,
     user_id: str,
-    modulo_nombre: str,
     subtema: dict,
     tema_id: str,
 ) -> None:
-    """Procesa un sub-tema: lee el MD, fragmenta, genera embeddings e inserta."""
-    archivo_rel = subtema["archivo"]
+    """Procesa un sub-tema: lee el MD, fragmenta, genera embeddings e inserta en `chunk`."""
+    archivo_rel = subtema.get("archivo")
+    if not archivo_rel:
+        print(f"      Sin archivo de contenido para este sub-tema — saltando inserción de chunks.")
+        return
+
     archivo_path = ROOT / "contenido" / archivo_rel
     storage_path = f"seed/{archivo_rel}"
 
@@ -291,46 +425,51 @@ def seed_subtema(
     chunks_texto = fragmentar_texto(texto)
     print(f"      Fragmentos: {len(chunks_texto)}")
 
+    if not chunks_texto:
+        print(f"      ADVERTENCIA: el archivo está vacío o no generó chunks.")
+        return
+
     # Generar embeddings en batch
     embeddings = generar_embeddings_batch(model, chunks_texto)
 
-    # Insertar documento
+    # Insertar documento en tabla `documento` (esquema correcto)
     doc_id = str(uuid.uuid4())
     supabase.table("documento").insert({
         "id": doc_id,
         "usuario_id": user_id,
         "tema_id": tema_id,
         "nombre_archivo": archivo_path.name,
+        "formato": "md",                      # campo requerido por el schema
         "storage_path": storage_path,
         "visibilidad": "compartido",
         "estado_moderacion": "aprobado",
     }).execute()
 
-    # Insertar chunks con embeddings
+    # Insertar chunks en tabla `chunk` (NO chunk_documento) con columna `contenido`
     filas_chunks = [
         {
             "documento_id": doc_id,
-            "tema_id": tema_id,
-            "texto": chunk_texto,
+            "contenido": chunk_texto,           # columna correcta según schema
             "embedding": embedding,
             "orden": i + 1,
-            "estado_moderacion": "aprobado",
         }
         for i, (chunk_texto, embedding) in enumerate(zip(chunks_texto, embeddings))
     ]
 
     # Insertar en lotes de 50 para evitar límites de tamaño de request
     BATCH = 50
+    total_insertados = 0
     for start in range(0, len(filas_chunks), BATCH):
-        supabase.table("chunk_documento").insert(filas_chunks[start:start + BATCH]).execute()
+        supabase.table("chunk").insert(filas_chunks[start:start + BATCH]).execute()
+        total_insertados += len(filas_chunks[start:start + BATCH])
 
-    print(f"      Insertado: documento {doc_id} con {len(filas_chunks)} chunks")
+    print(f"      [OK] Insertado: documento {doc_id} con {total_insertados} chunks en tabla `chunk`")
 
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def main() -> None:
-    print("\n=== Seed de contenido educativo — Módulos 1 y 2 ===\n")
+    print("\n=== Seed de contenido educativo — Módulos 1–5 ===\n")
 
     # Cargar modelo de embeddings primero (tarda ~2-5s la primera vez)
     model = cargar_modelo_embeddings()
@@ -340,7 +479,7 @@ def main() -> None:
     user_id = get_or_create_seed_user()
 
     total_docs = 0
-    total_chunks = 0
+    total_omitidos = 0
 
     print("\n[2] Procesando módulos y sub-temas...\n")
     for modulo_data in MODULOS:
@@ -353,35 +492,39 @@ def main() -> None:
         )
 
         for subtema_data in modulo_data["subtemas"]:
-            print(f"    Sub-tema {subtema_data['orden']}: {subtema_data['nombre']}")
+            print(f"    Sub-tema {subtema_data['orden']}: {subtema_data['nombre_bd']}")
 
             tema_id = get_or_create_tema(
-                nombre=subtema_data["nombre"],
+                nombre_bd=subtema_data["nombre_bd"],
+                nombre_seed=subtema_data["nombre_seed"],
                 descripcion=subtema_data["descripcion"],
                 orden=subtema_data["orden"],
                 modulo_id=modulo_id,
             )
 
-            seed_subtema(
-                model=model,
-                user_id=user_id,
-                modulo_nombre=modulo_data["nombre"],
-                subtema=subtema_data,
-                tema_id=tema_id,
-            )
-            total_docs += 1
+            if subtema_data.get("archivo"):
+                seed_subtema(
+                    model=model,
+                    user_id=user_id,
+                    subtema=subtema_data,
+                    tema_id=tema_id,
+                )
+                total_docs += 1
+            else:
+                print(f"      (sin archivo .md — sub-tema usa corpus general del PDF)")
+                total_omitidos += 1
 
         print()
 
     print(f"\n=== Seed completado ===")
-    print(f"  Módulos procesados : {len(MODULOS)}")
-    print(f"  Sub-temas procesados: {total_docs}")
+    print(f"  Módulos procesados    : {len(MODULOS)}")
+    print(f"  Sub-temas con archivo : {total_docs}")
+    print(f"  Sub-temas sin archivo : {total_omitidos} (usarán corpus general)")
     print()
-    print("Próximos pasos sugeridos:")
-    print("  1. Generar resúmenes de módulo:")
-    print("     POST /modulos/{modulo_id}/resumen  (requiere servidor en ejecución)")
-    print("  2. Generar preguntas sugeridas por sub-tema vía el LLM")
-    print("  3. Verificar en el frontend que los módulos aparecen en /modulos")
+    print("Próximos pasos:")
+    print("  1. Verificar en Supabase Dashboard que la tabla `chunk` tiene filas nuevas.")
+    print("  2. Reiniciar el backend para que el retriever use los nuevos chunks.")
+    print("  3. Probar el chat desde un sub-tema de Módulo 1 o 2.")
     print()
 
 

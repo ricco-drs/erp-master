@@ -366,12 +366,12 @@ class EvaluacionGenerada:
 
 def generar_evaluacion(
     tema_id: str,
-    n_preguntas: int = 8,
+    n_preguntas: int = 5,
     titulo: str | None = None,
 ) -> EvaluacionGenerada:
     """
     Genera una evaluación para el tema dado:
-    1. Recupera chunks representativos del tema.
+    1. Recupera chunks representativos del tema (2 queries, no 3).
     2. Pide al LLM que genere preguntas en JSON.
     3. Parsea y valida el JSON (un reintento si falla).
     4. Persiste evaluacion + preguntas en Supabase.
@@ -382,31 +382,39 @@ def generar_evaluacion(
     Lanza RuntimeError si el tema no tiene contexto suficiente.
     """
     # --- 1. Contexto del tema ---
-    # Usamos 3 queries complementarias para cubrir distintas partes del contenido
+    # 2 queries complementarias (suficiente para 5 preguntas)
     queries = [
-        "conceptos fundamentales y definiciones del tema",
-        "implementación, fases y proceso del tema",
-        "beneficios, problemas y factores críticos del tema",
+        "conceptos fundamentales definiciones del tema ERP",
+        "implementación beneficios riesgos factores críticos",
     ]
     todos_los_chunks: list = []
     vistos: set[str] = set()
     for q in queries:
-        chunks = recuperar_contexto(q, tema_id=tema_id, top_k=4, umbral=0.30)
+        chunks = recuperar_contexto(q, tema_id=tema_id, top_k=5, umbral=0.25)
         for c in chunks:
             if c.id not in vistos:
                 todos_los_chunks.append(c)
                 vistos.add(c.id)
 
+    # Fallback: si no hay chunks específicos del tema, usar corpus general
+    if not todos_los_chunks:
+        logger.warning("[EVAL] Sin chunks para tema=%s — usando corpus general", tema_id)
+        fallback = recuperar_contexto(
+            "sistemas ERP implementación gestión empresarial",
+            tema_id=None, top_k=6, umbral=0.20,
+        )
+        todos_los_chunks = fallback
+
     if not todos_los_chunks:
         raise RuntimeError(
-            f"El tema {tema_id} no tiene chunks indexados. "
-            "Verificá que existan documentos aprobados para ese tema."
+            f"No hay contenido indexado disponible para generar la evaluación. "
+            "Verificá que se haya ejecutado el seed de contenido."
         )
 
-    # Limitar a los top 10 chunks más relevantes para no exceder el contexto
+    # Limitar a los top 8 chunks para no exceder el contexto del LLM
     todos_los_chunks.sort(key=lambda c: c.similitud, reverse=True)
-    chunks_usados = todos_los_chunks[:10]
-    contexto = construir_contexto_texto(chunks_usados, max_chars=7000)
+    chunks_usados = todos_los_chunks[:8]
+    contexto = construir_contexto_texto(chunks_usados, max_chars=5000)
 
     logger.info(
         "[EVAL] Generando evaluación: tema=%s n=%d chunks_usados=%d",
@@ -418,19 +426,23 @@ def generar_evaluacion(
     preguntas_data: list[dict] | None = None
     ultimo_error: Exception | None = None
 
+    # ~150 tokens por pregunta en JSON + overhead. Llama para cuando termina el JSON,
+    # así que el tope real es conservador: basta con que no lo corte antes de tiempo.
+    max_tok = min(1400, 180 + n_preguntas * 160)
+
     for intento in range(1, 3):  # máx 2 intentos
         try:
-            texto_llm = completar(messages, temperature=0.4, max_tokens=2500)
+            texto_llm = completar(messages, temperature=0.3, max_tokens=max_tok)
             logger.debug(
-                "[EVAL] Raw LLM response intento %d (primeros 300 chars): %.300s",
+                "[EVAL] Raw LLM intento %d (primeros 300 chars): %.300s",
                 intento, texto_llm,
             )
             preguntas_data = _parsear_preguntas(texto_llm)
-            logger.info("[EVAL] JSON parseado OK en intento %d (%d preguntas)", intento, len(preguntas_data))
+            logger.info("[EVAL] JSON parseado OK intento %d (%d preguntas)", intento, len(preguntas_data))
             break
         except ValueError as e:
             ultimo_error = e
-            logger.warning("[EVAL] JSON malformado intento %d: %s — raw=%.200s", intento, e, texto_llm)
+            logger.warning("[EVAL] JSON malformado intento %d: %s", intento, e)
         except LLMError:
             raise  # LLMError se propaga directo (el router la convierte en 503)
 
@@ -538,7 +550,7 @@ def generar_evaluacion_modulo(
 
     for intento in range(1, 3):
         try:
-            texto_llm = completar(messages, temperature=0.4, max_tokens=3500)
+            texto_llm = completar(messages, temperature=0.4, max_tokens=min(2800, 180 + n_preguntas * 180))
             preguntas_data = _parsear_preguntas(texto_llm)
             logger.info("[EVAL] JSON módulo OK en intento %d (%d preguntas)", intento, len(preguntas_data))
             break

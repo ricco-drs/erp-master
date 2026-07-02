@@ -295,23 +295,31 @@ function DocRow({
         </span>
       </div>
       {!isMobile && !isTablet && (
-        <span style={{ fontSize: "13px", color: "var(--text-secondary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={temaNombre}>
-          {temaNombre}
-        </span>
+        <div style={{ minWidth: 0, overflow: "hidden" }}>
+          <span style={{ fontSize: "13px", color: "var(--text-secondary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "block" }} title={temaNombre}>
+            {temaNombre}
+          </span>
+        </div>
       )}
-      {!isMobile && <BadgeVisibilidad visibilidad={doc.visibilidad} />}
       {!isMobile && (
-        <div>
+        <div style={{ minWidth: 0 }}>
+          <BadgeVisibilidad visibilidad={doc.visibilidad} />
+        </div>
+      )}
+      {!isMobile && (
+        <div style={{ minWidth: 0 }}>
           <BadgeEstado estado={doc.estado_moderacion} />
           {doc.motivo_rechazo && (
-            <p style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "2px", lineHeight: 1.3 }} title={doc.motivo_rechazo}>
+            <p style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "2px", lineHeight: 1.3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={doc.motivo_rechazo}>
               {doc.motivo_rechazo.slice(0, 40)}…
             </p>
           )}
         </div>
       )}
       {!isMobile && !isTablet && (
-        <span style={{ fontSize: "12px", color: "var(--text-muted)" }}>{fecha}</span>
+        <div style={{ minWidth: 0 }}>
+          <span style={{ fontSize: "12px", color: "var(--text-muted)", whiteSpace: "nowrap" }}>{fecha}</span>
+        </div>
       )}
       {/* Acciones */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: "4px" }}>
@@ -351,12 +359,24 @@ function DocRowSecundario({
         </span>
       </div>
       {!isMobile && !isTablet && (
-        <span style={{ fontSize: "13px", color: "var(--text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{temaNombre}</span>
+        <div style={{ minWidth: 0, overflow: "hidden" }}>
+          <span style={{ fontSize: "13px", color: "var(--text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "block" }}>{temaNombre}</span>
+        </div>
       )}
-      {!isMobile && <BadgeVisibilidad visibilidad={doc.visibilidad} />}
-      {!isMobile && <BadgeEstado estado={doc.estado_moderacion} />}
+      {!isMobile && (
+        <div style={{ minWidth: 0 }}>
+          <BadgeVisibilidad visibilidad={doc.visibilidad} />
+        </div>
+      )}
+      {!isMobile && (
+        <div style={{ minWidth: 0 }}>
+          <BadgeEstado estado={doc.estado_moderacion} />
+        </div>
+      )}
       {!isMobile && !isTablet && (
-        <span style={{ fontSize: "12px", color: "var(--text-muted)" }}>{fecha}</span>
+        <div style={{ minWidth: 0 }}>
+          <span style={{ fontSize: "12px", color: "var(--text-muted)", whiteSpace: "nowrap" }}>{fecha}</span>
+        </div>
       )}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: "4px" }}>
         <ActionBtn title="Restaurar" onClick={onRestaurar} disabled={obrando}>
@@ -537,10 +557,10 @@ export default function DocumentosPage() {
   }
 
   const cols = isMobile
-    ? "1fr 72px"
+    ? "1fr 64px"
     : isTablet
-    ? "1fr 100px 110px 72px"
-    : "1fr 160px 100px 110px 90px 72px";
+    ? "1fr 110px 110px 64px"
+    : "1fr 180px 110px 110px 80px 64px";
 
   const headers = isMobile
     ? ["Archivo", ""]

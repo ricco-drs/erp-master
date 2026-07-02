@@ -75,7 +75,7 @@ export default function EvaluacionesPage() {
     try {
       const ev = await apiFetch<GenerarResponse>("/evaluaciones/generar", {
         method: "POST",
-        body: JSON.stringify({ tema_id: temaId, n_preguntas: 8 }),
+        body: JSON.stringify({ tema_id: temaId, n_preguntas: 5 }),
       });
       const intento = await apiFetch<IntentoResponse>(`/evaluaciones/${ev.evaluacion_id}/intentos`, {
         method: "POST",
@@ -121,7 +121,7 @@ export default function EvaluacionesPage() {
           Nueva evaluación
         </h1>
         <p style={{ fontSize: "14px", color: "var(--text-secondary)", maxWidth: "480px" }}>
-          Seleccioná un tema para generar 8 preguntas automáticas basadas en los documentos
+          Seleccioná un tema para generar 5 preguntas automáticas basadas en los documentos
           disponibles.
         </p>
       </div>
@@ -157,7 +157,7 @@ export default function EvaluacionesPage() {
               Generando evaluación…
             </p>
             <p style={{ fontSize: "12px", color: "var(--text-muted)" }}>
-              El asistente está creando las preguntas. Puede tardar hasta 15 segundos.
+              El asistente está creando las preguntas. Puede tardar unos segundos.
             </p>
           </div>
         </div>

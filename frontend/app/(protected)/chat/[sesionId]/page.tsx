@@ -67,7 +67,6 @@ function MensajeUsuario({ msg }: { msg: Mensaje }) {
 function MensajeAsistente({ msg, fueraDeAlcance }: { msg: Mensaje; fueraDeAlcance?: boolean }) {
   return (
     <div style={{ display: "flex", gap: "12px", marginBottom: "24px", maxWidth: "82%" }}>
-      {/* Indicador visual del asistente */}
       <div style={{ flexShrink: 0, marginTop: "2px" }}>
         <span
           style={{
@@ -81,7 +80,6 @@ function MensajeAsistente({ msg, fueraDeAlcance }: { msg: Mensaje; fueraDeAlcanc
         />
       </div>
 
-      {/* Contenido editorial — sin burbuja */}
       <div>
         <p
           style={{
@@ -219,7 +217,6 @@ function LoadingDots() {
 // Página principal
 // ---------------------------------------------------------------------------
 
-// Track which messages are "fuera de alcance" (only from streaming responses)
 type MensajeConMeta = Mensaje & { fuera_de_alcance?: boolean };
 
 export default function ConversacionPage({
@@ -238,20 +235,48 @@ export default function ConversacionPage({
   const [texto, setTexto] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [errorEnvio, setErrorEnvio] = useState<string | null>(null);
-  const preguntaInicialEnviada = useRef(false);
+  // Previene doble ejecución del mensaje inicial en StrictMode
+  const mensajeInicialEnviado = useRef(false);
 
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  // Cargar historial inicial; si hay ?q= y sesión nueva, enviar automáticamente
+  // Cargar historial inicial; disparar bienvenida/pregunta si la sesión es nueva
   useEffect(() => {
     apiFetch<Mensaje[]>(`/chat/sesiones/${sesionId}/mensajes`)
       .then((msgs) => {
         setMensajes(msgs);
-        const q = searchParams.get("q");
-        if (msgs.length === 0 && q && !preguntaInicialEnviada.current) {
-          preguntaInicialEnviada.current = true;
-          enviarContenido(q);
+
+        // Solo actuar si la sesión no tiene mensajes previos
+        if (msgs.length === 0 && !mensajeInicialEnviado.current) {
+          mensajeInicialEnviado.current = true;
+
+          const q = searchParams.get("q");
+          const modo = searchParams.get("modo"); // "subtema" | "caso"
+          const nombreContexto = searchParams.get("ctx"); // nombre del sub-tema o caso
+
+          if (q) {
+            // Pregunta inicial desde chip de preguntas sugeridas
+            enviarMensajeInterno(q);
+          } else if (modo === "subtema" && nombreContexto) {
+            enviarMensajeInterno(
+              `Hola. Estoy empezando a estudiar el sub-tema: "${decodeURIComponent(nombreContexto)}". ` +
+              `Por favor, dame una introducción clara sobre de qué trata este tema, ` +
+              `cuáles son los conceptos más importantes que voy a aprender, ` +
+              `y recomiéndame libros, documentación oficial o recursos clave para profundizar más. ` +
+              `Presentá tu respuesta de forma estructurada.`,
+              true // ocultar el mensaje del usuario
+            );
+          } else if (modo === "caso" && nombreContexto) {
+            enviarMensajeInterno(
+              `Acabo de subir la documentación del caso: "${decodeURIComponent(nombreContexto)}". ` +
+              `Por favor, analizá el documento que tenés disponible y dame un resumen ejecutivo: ` +
+              `¿de qué trata este caso?, ¿cuál es el contexto de la empresa?, ` +
+              `¿cuáles son los puntos más relevantes que identificás? ` +
+              `Luego indicame cómo podés ayudarme con este caso.`,
+              true // ocultar el mensaje del usuario
+            );
+          }
         }
       })
       .catch(() => setError("No se pudo cargar la conversación."))
@@ -272,20 +297,28 @@ export default function ConversacionPage({
     ta.style.height = `${Math.min(ta.scrollHeight, 160)}px`;
   }, [texto]);
 
-  async function enviarContenido(contenido: string) {
+  /**
+   * Envía un mensaje al backend. Cuando `ocultarUsuario=true`, el mensaje del
+   * usuario no se renderiza en la UI (es el mensaje de bienvenida automático).
+   */
+  async function enviarMensajeInterno(contenido: string, ocultarUsuario = false) {
     if (!contenido.trim() || enviando) return;
 
     setTexto("");
     setErrorEnvio(null);
     setEnviando(true);
 
-    const msgUsuario: MensajeConMeta = {
-      id: `temp-${Date.now()}`,
-      rol_emisor: "usuario",
-      contenido,
-      enviado_en: new Date().toISOString(),
-    };
-    setMensajes((prev) => [...prev, msgUsuario]);
+    // Solo agregamos el mensaje del usuario a la UI si NO es oculto
+    const msgId = `temp-${Date.now()}`;
+    if (!ocultarUsuario) {
+      const msgUsuario: MensajeConMeta = {
+        id: msgId,
+        rol_emisor: "usuario",
+        contenido,
+        enviado_en: new Date().toISOString(),
+      };
+      setMensajes((prev) => [...prev, msgUsuario]);
+    }
 
     try {
       const res = await apiFetch<EnviarMensajeResponse>(
@@ -293,6 +326,7 @@ export default function ConversacionPage({
         { method: "POST", body: JSON.stringify({ contenido }) }
       );
       setMensajes((prev) => [
+        // Si ocultamos el mensaje del usuario, filtramos el temp (que no está)
         ...prev,
         {
           id: res.mensaje_id,
@@ -304,12 +338,18 @@ export default function ConversacionPage({
       ]);
     } catch (err) {
       setErrorEnvio((err as Error).message);
-      setMensajes((prev) => prev.filter((m) => m.id !== msgUsuario.id));
-      setTexto(contenido);
+      if (!ocultarUsuario) {
+        setMensajes((prev) => prev.filter((m) => m.id !== msgId));
+        setTexto(contenido);
+      }
     } finally {
       setEnviando(false);
       textareaRef.current?.focus();
     }
+  }
+
+  async function enviarContenido(contenido: string) {
+    enviarMensajeInterno(contenido);
   }
 
   function handleEnviar() {
@@ -322,6 +362,34 @@ export default function ConversacionPage({
       handleEnviar();
     }
   }
+
+  // Estado de la sesión (nombre, etc.)
+  const [sesionNombre, setSesionNombre] = useState<string | null>(null);
+
+  // Cargar información de la sesión
+  useEffect(() => {
+    apiFetch<{ nombre: string | null; tema_id: string | null }>(`/chat/sesiones/${sesionId}`)
+      .then((data) => setSesionNombre(data.nombre))
+      .catch(() => {});
+  }, [sesionId]);
+
+  // Después de enviar el primer mensaje, refrescar el nombre (puede haber cambiado)
+  useEffect(() => {
+    if (mensajes.length > 0 && !sesionNombre) {
+      apiFetch<{ nombre: string | null }>(`/chat/sesiones/${sesionId}`)
+        .then((data) => {
+          if (data.nombre) setSesionNombre(data.nombre);
+        })
+        .catch(() => {});
+    }
+  }, [mensajes.length, sesionId, sesionNombre]);
+
+  // Título visible en el header
+  const modoHeader = searchParams.get("modo");
+  const ctxHeader = searchParams.get("ctx")
+    ? decodeURIComponent(searchParams.get("ctx")!)
+    : null;
+  const headerNombre = ctxHeader ?? sesionNombre ?? "Chat general";
 
   // ---------------------------------------------------------------------------
   // Render
@@ -382,7 +450,11 @@ export default function ConversacionPage({
         }}
       >
         <button
-          onClick={() => router.push("/chat")}
+          onClick={() => {
+            if (modoHeader === "subtema") router.back();
+            else if (modoHeader === "caso") router.push("/empresa");
+            else router.push("/chat");
+          }}
           style={{
             display: "flex",
             alignItems: "center",
@@ -398,18 +470,18 @@ export default function ConversacionPage({
           onMouseLeave={(e) => ((e.currentTarget as HTMLButtonElement).style.color = "var(--text-secondary)")}
         >
           <ArrowLeft size={14} />
-          Temas
+          {modoHeader === "caso" ? "Mi empresa" : modoHeader === "subtema" ? "Sub-temas" : "Temas"}
         </button>
 
         <span style={{ color: "var(--border)", fontSize: "16px" }}>/</span>
 
-        <p style={{ fontSize: "13px", color: "var(--text-primary)", fontWeight: 500 }}>
-          Sesión activa
+        <p style={{ fontSize: "13px", color: "var(--text-primary)", fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>
+          {headerNombre}
         </p>
 
         <span
           style={{
-            marginLeft: "auto",
+            flexShrink: 0,
             fontSize: "11px",
             color: "var(--text-muted)",
             fontFamily: "monospace",
@@ -430,8 +502,8 @@ export default function ConversacionPage({
         }}
       >
         <div style={{ maxWidth: "880px", margin: "0 auto" }}>
-          {/* Estado vacío */}
-          {!cargando && mensajes.length === 0 && (
+          {/* Estado vacío: solo se muestra si estamos cargando o no hay nada que mostrar */}
+          {!cargando && mensajes.length === 0 && !enviando && (
             <div style={{ textAlign: "center", marginTop: "80px" }}>
               <div
                 style={{
@@ -582,7 +654,7 @@ export default function ConversacionPage({
           </div>
 
           <p style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "8px", textAlign: "center" }}>
-            Las respuestas se basan exclusivamente en los documentos del tema seleccionado.
+            Las respuestas se basan en los documentos del tema seleccionado.
           </p>
         </div>
       </div>

@@ -28,6 +28,7 @@ interface Tema {
 interface Sesion {
   id: string;
   tema_id: string | null;
+  nombre: string | null;
   iniciada_en: string;
   archivada: boolean;
 }
@@ -102,6 +103,20 @@ export default function ChatPage() {
   }, [vista]);
 
   const temaMap = Object.fromEntries(temas.map((t) => [t.id, t.nombre]));
+
+  // Resolver nombre visible para cada sesión con numeración de duplicados
+  function resolverNombreSesion(sesion: Sesion): string {
+    return sesion.nombre ?? (sesion.tema_id ? temaMap[sesion.tema_id] : null) ?? "Chat general";
+  }
+
+  const nombresContador = new Map<string, number>();
+  const nombresDisplay = new Map<string, string>();
+  for (const s of sesiones) {
+    const base = resolverNombreSesion(s);
+    const count = (nombresContador.get(base) ?? 0) + 1;
+    nombresContador.set(base, count);
+    nombresDisplay.set(s.id, count > 1 ? `${base} (${count})` : base);
+  }
 
   // ── Crear sesión ────────────────────────────────────────────────────────
 
@@ -512,7 +527,7 @@ export default function ChatPage() {
                     <SesionItem
                       key={sesion.id}
                       sesion={sesion}
-                      temaNombre={sesion.tema_id ? temaMap[sesion.tema_id] : undefined}
+                      displayName={nombresDisplay.get(sesion.id) ?? resolverNombreSesion(sesion)}
                       onClick={
                         vista !== "papelera"
                           ? () => router.push(`/chat/${sesion.id}`)
@@ -659,12 +674,12 @@ interface Accion {
 
 function SesionItem({
   sesion,
-  temaNombre,
+  displayName,
   onClick,
   acciones,
 }: {
   sesion: Sesion;
-  temaNombre: string | undefined;
+  displayName: string;
   onClick?: () => void;
   acciones: Accion[];
 }) {
@@ -701,7 +716,7 @@ function SesionItem({
           margin: 0,
         }}
       >
-        {temaNombre ?? "Chat general"}
+        {displayName}
       </p>
 
       {hover ? (

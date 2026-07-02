@@ -192,21 +192,33 @@ export default function EvaluacionPage({
   const [evaluacionId, setEvaluacionId] = useState<string | null>(null);
 
   useEffect(() => {
-    // 1. Intentar cargar preguntas desde sessionStorage (pasadas por la página de selección)
+    // 1. Intentar cargar preguntas desde sessionStorage (la página que generó la eval las guardó ahí)
+    let loadedFromStorage = false;
     const raw = sessionStorage.getItem(`eval_preguntas_${intentoId}`);
     if (raw) {
       try {
         setPreguntas(JSON.parse(raw));
         sessionStorage.removeItem(`eval_preguntas_${intentoId}`);
+        loadedFromStorage = true;
       } catch { /* ignore */ }
     }
 
-    // 2. Verificar estado del intento (si ya fue completado, redirigir a resultados)
+    // 2. Verificar estado del intento; si no hay preguntas del storage, buscarlas del backend
     apiFetch<IntentoResultado>(`/evaluaciones/intentos/${intentoId}`)
-      .then((intento) => {
+      .then(async (intento) => {
         setEvaluacionId(intento.evaluacion_id);
         if (intento.completado_en) {
           router.replace(`/evaluaciones/${intentoId}/resultados`);
+          return;
+        }
+        // Fallback: sessionStorage vacío (ej: página recargada) → fetch desde el backend
+        if (!loadedFromStorage) {
+          try {
+            const pregs = await apiFetch<Pregunta[]>(`/evaluaciones/${intento.evaluacion_id}/preguntas`);
+            setPreguntas(pregs);
+          } catch {
+            setError("No se pudieron cargar las preguntas de la evaluación.");
+          }
         }
       })
       .catch(() => setError("No se pudo cargar la evaluación."))

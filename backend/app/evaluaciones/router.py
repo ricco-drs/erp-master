@@ -21,6 +21,8 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/evaluaciones", tags=["evaluaciones"])
 
+_UMBRAL_APROBACION = 0.55  # 11/20
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -237,14 +239,15 @@ async def generar_modulo(
             .eq("usuario_id", user_id)
             .in_("evaluacion_id", eval_ids)
             .filter("completado_en", "not.is", "null")
+            .gte("puntaje_total", _UMBRAL_APROBACION)
             .limit(1)
             .execute()
         )
         if not intentos_resp.data:
             raise HTTPException(
                 status.HTTP_422_UNPROCESSABLE_ENTITY,
-                f"Debés completar al menos una evaluación del sub-tema "
-                f'"{subtema["nombre"]}" antes de acceder al examen final del módulo.',
+                f'Debés aprobar la evaluación del sub-tema "{subtema["nombre"]}" '
+                f"con al menos 11/20 antes del examen final.",
             )
 
     try:
@@ -469,6 +472,46 @@ async def obtener_resultado(
         completado_en=intento["completado_en"],
         respuestas=respuestas_out,
     )
+
+
+# ---------------------------------------------------------------------------
+# GET /evaluaciones/{evaluacion_id}/preguntas — fallback para la UI
+# ---------------------------------------------------------------------------
+
+@router.get("/{evaluacion_id}/preguntas", response_model=list[PreguntaOut])
+async def obtener_preguntas(
+    evaluacion_id: str,
+    user_id: str = Depends(get_current_user_id),
+):
+    """
+    Devuelve las preguntas de una evaluación SIN respuesta_correcta.
+    Solo accesible si el usuario tiene un intento para esa evaluación.
+    Usado como fallback cuando sessionStorage no tiene las preguntas.
+    """
+    intento_resp = (
+        supabase.table("intento_evaluacion")
+        .select("id")
+        .eq("usuario_id", user_id)
+        .eq("evaluacion_id", evaluacion_id)
+        .limit(1)
+        .execute()
+    )
+    if not intento_resp.data:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "No tenés acceso a esta evaluación.")
+
+    preguntas = _get_preguntas(evaluacion_id)
+    if not preguntas:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "La evaluación no tiene preguntas.")
+
+    return [
+        PreguntaOut(
+            id=p["id"],
+            tipo=p["tipo"],
+            enunciado=p["enunciado"],
+            opciones=p.get("opciones"),
+        )
+        for p in preguntas
+    ]
 
 
 # ---------------------------------------------------------------------------
