@@ -7,6 +7,7 @@ from fastapi.responses import JSONResponse
 
 from app.core.auth import get_current_user_id
 from app.core.supabase_client import supabase
+from app.core.config import settings
 from app.base_conocimiento.router import router as documentos_router
 from app.temas.router import router as temas_router
 from app.chat.router import router as chat_router
@@ -56,7 +57,7 @@ async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONR
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=[o.strip() for o in settings.cors_origins.split(",")],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

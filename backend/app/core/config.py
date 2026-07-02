@@ -20,6 +20,9 @@ class Settings(BaseSettings):
 
     embedding_model: str = "all-MiniLM-L6-v2"
 
+    # CORS: orígenes permitidos separados por coma (para deploy)
+    cors_origins: str = "http://localhost:3000"
+
     # OCR/visión para extracción de PDFs (Google AI Studio)
     gemini_api_key: str = ""
     gemini_model: str = "gemini-2.5-flash"

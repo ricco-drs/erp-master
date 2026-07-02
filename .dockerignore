@@ -1,0 +1,32 @@
+# Python
+backend/venv/
+backend/__pycache__/
+**/__pycache__/
+**/*.pyc
+
+# Node
+frontend/node_modules/
+frontend/.next/
+
+# Env
+**/.env
+**/.env.local
+**/.env.*.local
+
+# Git
+.git/
+.gitignore
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+
+# Docs
+README.md
+docs/
+design/
+fases/
