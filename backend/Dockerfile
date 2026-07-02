@@ -45,13 +45,6 @@ COPY contenido /app/contenido
 # Scripts de seed
 COPY scripts /app/scripts
 
-# Pre-cachear el modelo de embeddings para que no se descargue en el primer request
-RUN python <<EOF
-from sentence_transformers import SentenceTransformer
-SentenceTransformer("all-MiniLM-L6-v2")
-print("[Docker] Modelo de embeddings precargado OK")
-EOF
-
 # Directorio de trabajo para el backend
 WORKDIR /app/backend
 
