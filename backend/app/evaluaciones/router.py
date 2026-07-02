@@ -154,7 +154,12 @@ async def generar(
             "[EVAL] Sin chunks indexados — tema_id=%s error=%s",
             body.tema_id, e,
         )
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(e))
+        nombre = tema_resp.data.get("nombre", "seleccionado")
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            f'El tema "{nombre}" no tiene documentos suficientes para generar una evaluación. '
+            "Verificá que existan documentos aprobados para este tema.",
+        )
     except ValueError as e:
         logger.error(
             "[EVAL] JSON inválido del LLM — tema_id=%s error=%s",
@@ -164,6 +169,12 @@ async def generar(
     except LLMError as e:
         logger.error("[EVAL] LLM no disponible — tema_id=%s error=%s", body.tema_id, e)
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, f"El asistente no está disponible: {e}")
+    except Exception as e:
+        logger.exception("[EVAL] Error inesperado generando evaluación — tema_id=%s", body.tema_id)
+        raise HTTPException(
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+            "Ocurrió un error inesperado generando la evaluación. Intentá de nuevo.",
+        )
 
     # Nunca exponer respuesta_correcta al cliente
     preguntas_out = [

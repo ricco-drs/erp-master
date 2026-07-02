@@ -47,28 +47,43 @@ def _calcular_distribucion(n: int) -> list[str]:
 
 _PROMPT_SISTEMA = """\
 Eres un docente experto en sistemas ERP que genera evaluaciones académicas rigurosas.
-Tu tarea es generar preguntas de evaluación basadas ÚNICAMENTE en el contexto de documentos
-proporcionado — nunca inventar preguntas sobre contenido ausente en ese contexto.
+Tu tarea es generar preguntas de evaluación sobre el TEMA ESPECÍFICO indicado,
+utilizando el contexto de documentos proporcionado como base de conocimiento.
+
+REGLAS FUNDAMENTALES:
+- Las preguntas deben estar orientadas EXCLUSIVAMENTE al tema indicado.
+- NUNCA generes preguntas sobre nombres de archivos, nombres de documentos, 
+  fuentes, autores, fechas de publicación, ni metadatos de los documentos.
+- NUNCA generes preguntas sobre detalles ultra-específicos como números de página,
+  nombres de secciones del documento, ni referencias bibliográficas.
+- Enfócate en los CONCEPTOS, TEORÍAS, PROCESOS, BENEFICIOS, RIESGOS y 
+  APLICACIONES PRÁCTICAS del tema indicado.
+- Las preguntas deben evaluar la COMPRENSIÓN del tema, no la memorización de 
+  datos triviales o específicos de un documento particular.
+- Si el contexto contiene información de múltiples fuentes, sintetiza los conceptos
+  del tema y genera preguntas sobre esos conceptos generales.
 
 Responde EXCLUSIVAMENTE con un objeto JSON válido, sin texto adicional, sin markdown,
 sin bloques de código — solo el JSON puro.
 """
 
 _PROMPT_USUARIO = """\
-Genera exactamente {n_preguntas} preguntas de evaluación basadas en el siguiente contexto.
+Genera exactamente {n_preguntas} preguntas de evaluación sobre el tema: "{nombre_tema}".
 
 Distribución requerida de tipos:
 {distribucion_str}
 
-Contexto de documentos:
+Contexto de referencia (úsalo como base de conocimiento, NO preguntes sobre los documentos en sí):
 ---
 {contexto}
 ---
 
 Reglas:
-- Cada pregunta debe ser directamente verificable con el contexto provisto.
-- Nunca incluyas información que no esté en el contexto.
-- Las preguntas deben ser claras, sin ambigüedades.
+- TODAS las preguntas deben estar relacionadas con el tema "{nombre_tema}".
+- Evalúa conceptos, definiciones, procesos, ventajas, desventajas y aplicaciones del tema.
+- IGNORA completamente cualquier nombre de archivo, encabezado de documento, o metadato 
+  que aparezca en el contexto. No hagas preguntas sobre esos elementos.
+- Las preguntas deben ser claras, sin ambigüedades, y útiles para evaluar la comprensión del tema.
 - Para "opcion_multiple": exactamente 4 opciones, una sola correcta. Formato de opciones: ["a) texto", "b) texto", "c) texto", "d) texto"]. respuesta_correcta debe ser la letra: "a", "b", "c" o "d".
 - Para "verdadero_falso": opciones fijas ["Verdadero", "Falso"]. respuesta_correcta debe ser "Verdadero" o "Falso".
 - Para "abierta": opciones es null y respuesta_correcta es null.
@@ -87,7 +102,7 @@ Devuelve SOLO este JSON (sin texto antes ni después):
 """
 
 
-def _construir_prompt(n_preguntas: int, contexto: str) -> list[dict[str, str]]:
+def _construir_prompt(n_preguntas: int, contexto: str, nombre_tema: str = "sistemas ERP") -> list[dict[str, str]]:
     tipos = _calcular_distribucion(n_preguntas)
     conteo = {t: tipos.count(t) for t in set(tipos)}
     distribucion_str = "\n".join(
@@ -96,6 +111,7 @@ def _construir_prompt(n_preguntas: int, contexto: str) -> list[dict[str, str]]:
     )
     prompt = _PROMPT_USUARIO.format(
         n_preguntas=n_preguntas,
+        nombre_tema=nombre_tema,
         distribucion_str=distribucion_str,
         contexto=contexto,
     )
@@ -382,11 +398,16 @@ def generar_evaluacion(
     Lanza ValueError si el JSON sigue malformado tras el reintento.
     Lanza RuntimeError si el tema no tiene contexto suficiente.
     """
+    # --- 0. Obtener nombre y descripción del tema ---
+    tema_resp = supabase.table("tema").select("nombre, descripcion").eq("id", tema_id).single().execute()
+    nombre_tema = (tema_resp.data or {}).get("nombre") or "sistemas ERP"
+    desc_tema = (tema_resp.data or {}).get("descripcion") or ""
+
     # --- 1. Contexto del tema ---
-    # 2 queries complementarias (suficiente para 5 preguntas)
+    # Queries orientadas al tema específico seleccionado por el usuario
     queries = [
-        "conceptos fundamentales definiciones del tema ERP",
-        "implementación beneficios riesgos factores críticos",
+        f"conceptos fundamentales definiciones de {nombre_tema}",
+        f"implementación beneficios riesgos de {nombre_tema}",
     ]
     todos_los_chunks: list = []
     vistos: set[str] = set()
@@ -397,11 +418,11 @@ def generar_evaluacion(
                 todos_los_chunks.append(c)
                 vistos.add(c.id)
 
-    # Fallback 1: si no hay chunks del tema, buscar en corpus general
+    # Fallback 1: si no hay chunks del tema, buscar en corpus general con query del tema
     if not todos_los_chunks:
-        logger.warning("[EVAL] Sin chunks para tema=%s — usando corpus general", tema_id)
+        logger.warning("[EVAL] Sin chunks para tema=%s (%s) — usando corpus general", tema_id, nombre_tema)
         fallback = recuperar_contexto(
-            "sistemas ERP implementación gestión empresarial beneficios riesgos",
+            f"{nombre_tema} conceptos implementación gestión",
             tema_id=None, top_k=6, umbral=0.15, user_id=user_id,
         )
         todos_los_chunks = fallback
@@ -409,14 +430,11 @@ def generar_evaluacion(
     # Fallback 2: sin ningún contenido indexado, usar nombre y descripción del tema
     if not todos_los_chunks:
         logger.warning("[EVAL] Sin contenido indexado — generando desde descripción del tema=%s", tema_id)
-        tema_info = supabase.table("tema").select("nombre, descripcion").eq("id", tema_id).single().execute()
-        nombre_fb = (tema_info.data or {}).get("nombre") or "sistemas ERP"
-        desc_fb = (tema_info.data or {}).get("descripcion") or ""
         contexto = (
-            f"Tema: {nombre_fb}\n\n{desc_fb}\n\n"
+            f"Tema: {nombre_tema}\n\n{desc_tema}\n\n"
             "Contexto adicional: Este tema forma parte de un curso de capacitación en sistemas ERP "
             "(Enterprise Resource Planning). Las preguntas deben evaluar conceptos clave relacionados "
-            "con la implementación, beneficios, riesgos y gestión de sistemas ERP en organizaciones."
+            f"con {nombre_tema} en el contexto de la gestión empresarial y sistemas de información."
         ).strip()
         chunks_usados_n = 0
     else:
@@ -426,12 +444,12 @@ def generar_evaluacion(
         chunks_usados_n = len(chunks_usados)
 
     logger.info(
-        "[EVAL] Generando evaluación: tema=%s n=%d chunks_usados=%d",
-        tema_id, n_preguntas, chunks_usados_n,
+        "[EVAL] Generando evaluación: tema=%s (%s) n=%d chunks_usados=%d",
+        tema_id, nombre_tema, n_preguntas, chunks_usados_n,
     )
 
     # --- 2. Llamar al LLM (con 1 reintento si JSON malformado) ---
-    messages = _construir_prompt(n_preguntas, contexto)
+    messages = _construir_prompt(n_preguntas, contexto, nombre_tema=nombre_tema)
     preguntas_data: list[dict] | None = None
     ultimo_error: Exception | None = None
 
@@ -462,8 +480,6 @@ def generar_evaluacion(
         )
 
     # --- 3. Persistir evaluacion ---
-    tema_resp = supabase.table("tema").select("nombre").eq("id", tema_id).single().execute()
-    nombre_tema = tema_resp.data["nombre"] if tema_resp.data else "Tema"
     titulo_final = titulo or f"Evaluación — {nombre_tema}"
 
     eval_resp = supabase.table("evaluacion").insert({
@@ -521,12 +537,12 @@ def generar_evaluacion_modulo(
     modulo_resp = supabase.table("modulo").select("nombre").eq("id", modulo_id).single().execute()
     nombre_modulo = modulo_resp.data["nombre"] if modulo_resp.data else "Módulo"
 
-    # Recuperar contexto con queries variadas para cubrir todos los sub-temas
+    # Recuperar contexto con queries orientadas al módulo específico
     queries = [
-        "conceptos fundamentales y definiciones",
-        "implementación práctica y fases del proceso",
-        "beneficios riesgos y factores críticos de éxito",
-        "casos prácticos aplicaciones reales en empresas",
+        f"conceptos fundamentales y definiciones de {nombre_modulo}",
+        f"implementación práctica y fases del proceso de {nombre_modulo}",
+        f"beneficios riesgos y factores críticos de {nombre_modulo}",
+        f"casos prácticos aplicaciones reales de {nombre_modulo}",
     ]
     todos_los_chunks: list = []
     vistos: set[str] = set()
@@ -548,12 +564,12 @@ def generar_evaluacion_modulo(
     contexto = construir_contexto_texto(chunks_usados, max_chars=9000)
 
     logger.info(
-        "[EVAL] Generando evaluación de módulo: modulo=%s n=%d chunks=%d",
-        modulo_id, n_preguntas, len(chunks_usados),
+        "[EVAL] Generando evaluación de módulo: modulo=%s (%s) n=%d chunks=%d",
+        modulo_id, nombre_modulo, n_preguntas, len(chunks_usados),
     )
 
     # Llamar al LLM con hasta 2 intentos
-    messages = _construir_prompt(n_preguntas, contexto)
+    messages = _construir_prompt(n_preguntas, contexto, nombre_tema=nombre_modulo)
     preguntas_data: list[dict] | None = None
     ultimo_error: Exception | None = None
 
