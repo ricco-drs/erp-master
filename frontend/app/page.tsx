@@ -42,34 +42,6 @@ const TEAM = [
     color: "#4ADE80",
   },
   {
-    nombre: "Evelyn Ventura",
-    rol: "Backend Engineer",
-    foto: imgEvelyn,
-    linkedin: "https://www.linkedin.com/in/evelyn-janela-ventura-perez-51854241b",
-    color: "#60A5FA",
-  },
-  {
-    nombre: "Josecarlos Valenzuela",
-    rol: "Frontend Developer & UX",
-    foto: imgJoseCarlos,
-    linkedin: "https://www.linkedin.com/in/josecarlos-valenzuela-arroyo",
-    color: "#F472B6",
-  },
-  {
-    nombre: "Juan Pintado",
-    rol: "ML Engineer & Embeddings",
-    foto: imgJuan,
-    linkedin: "https://www.linkedin.com/in/juan-andres-pintado-l%C3%B3pez-597826306",
-    color: "#FBBF24",
-  },
-  {
-    nombre: "Kate Llantoy",
-    rol: "Data Engineer",
-    foto: imgKate,
-    linkedin: "https://www.linkedin.com/in/kate-llantoy",
-    color: "#A78BFA",
-  },
-  {
     nombre: "Lady Torres",
     rol: "DevOps & Infrastructure",
     foto: imgLady,
@@ -82,6 +54,34 @@ const TEAM = [
     foto: imgRubi,
     linkedin: "https://www.linkedin.com/in/rubi-quispe-sierra/",
     color: "#FB923C",
+  },
+  {
+    nombre: "Juan Pintado",
+    rol: "ML Engineer & Embeddings",
+    foto: imgJuan,
+    linkedin: "https://www.linkedin.com/in/juan-andres-pintado-l%C3%B3pez-597826306",
+    color: "#FBBF24",
+  },
+  {
+    nombre: "Josecarlos Valenzuela",
+    rol: "Frontend Developer & UX",
+    foto: imgJoseCarlos,
+    linkedin: "https://www.linkedin.com/in/josecarlos-valenzuela-arroyo",
+    color: "#F472B6",
+  },
+  {
+    nombre: "Kate Llantoy",
+    rol: "Data Engineer",
+    foto: imgKate,
+    linkedin: "https://www.linkedin.com/in/kate-llantoy",
+    color: "#A78BFA",
+  },
+  {
+    nombre: "Evelyn Ventura",
+    rol: "Backend Engineer",
+    foto: imgEvelyn,
+    linkedin: "https://www.linkedin.com/in/evelyn-janela-ventura-perez-51854241b",
+    color: "#60A5FA",
   },
 ];
 
@@ -233,15 +233,15 @@ function TeamCard({ miembro }: { miembro: (typeof TEAM)[number] }) {
       </div>
 
       {/* Info */}
-      <div style={{ padding: "14px 14px 18px" }}>
-        <p style={{ fontSize: 14, fontWeight: 700, color: "var(--text-primary)", marginBottom: 3, letterSpacing: "-0.01em" }}>
+      <div style={{ padding: "14px 14px 18px", textAlign: "center" }}>
+        <p style={{ fontSize: 16, fontWeight: 700, color: "var(--text-primary)", marginBottom: 6, letterSpacing: "-0.01em" }}>
           {miembro.nombre}
         </p>
-        <p style={{ fontSize: 11, fontWeight: 600, color: miembro.color, marginBottom: 5, letterSpacing: "0.02em" }}>
-          {miembro.rol}
-        </p>
-        <p style={{ fontSize: 11, color: "var(--text-muted)" }}>
+        <p style={{ fontSize: 13, color: "var(--text-muted)" }}>
           Ingeniería Industrial · UNI
+        </p>
+        <p style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 3 }}>
+          6to ciclo
         </p>
       </div>
     </a>
