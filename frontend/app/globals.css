@@ -1,17 +1,18 @@
 @import "tailwindcss";
 
 :root {
-  --bg-base: #0A0A0A;
-  --bg-surface: #121212;
-  --bg-surface-hover: #1A1A1A;
-  --border: #262626;
-  --border-strong: #3A3A3A;
-  --text-primary: #FAFAFA;
-  --text-secondary: #A1A1A1;
-  --text-muted: #6B6B6B;
-  --accent: #4ADE80;
-  --accent-hover: #3FCB72;
-  --accent-muted: #1A2E22;
+  /* CAMINO 1 — Tema claro (blanco + turquesa) */
+  --bg-base: #F6FAFB;
+  --bg-surface: #FFFFFF;
+  --bg-surface-hover: #EDF6F7;
+  --border: #DCE8EA;
+  --border-strong: #C2D6D9;
+  --text-primary: #0E2C31;
+  --text-secondary: #52696E;
+  --text-muted: #82999D;
+  --accent: #22B1C2;
+  --accent-hover: #1C93A2;
+  --accent-muted: #D6F0F3;
   --danger: #EF4444;
 
   --radius-sm: 4px;

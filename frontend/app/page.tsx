@@ -336,7 +336,7 @@ export default function LandingPage() {
           right: 0,
           zIndex: 50,
           height: 56,
-          backgroundColor: "rgba(10,10,10,0.92)",
+          backgroundColor: "rgba(255,255,255,0.85)",
           borderBottom: "1px solid var(--border)",
           backdropFilter: "blur(12px)",
           display: "flex",
@@ -1052,12 +1052,12 @@ export default function LandingPage() {
             {/* Edge fades */}
             <div aria-hidden style={{
               position: "absolute", left: 0, top: 0, bottom: 8, width: 40,
-              background: "linear-gradient(to right, #0A0A0A, transparent)",
+              background: "linear-gradient(to right, var(--bg-base), transparent)",
               pointerEvents: "none",
             }} />
             <div aria-hidden style={{
               position: "absolute", right: 0, top: 0, bottom: 8, width: 40,
-              background: "linear-gradient(to left, #0A0A0A, transparent)",
+              background: "linear-gradient(to left, var(--bg-base), transparent)",
               pointerEvents: "none",
             }} />
           </div>
